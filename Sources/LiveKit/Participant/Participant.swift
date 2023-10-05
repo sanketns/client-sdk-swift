@@ -119,7 +119,7 @@ public class Participant: NSObject, ObservableObject, Loggable {
             // metadata updated
             if let metadata = newState.metadata, metadata != oldState.metadata,
                // don't notify if empty string (first time only)
-               (oldState.metadata == nil ? !metadata.isEmpty : true) {
+               oldState.metadata == nil ? !metadata.isEmpty : true {
 
                 self.delegates.notify(label: { "participant.didUpdate metadata: \(metadata)" }) {
                     $0.participant?(self, didUpdate: metadata)
@@ -151,9 +151,12 @@ public class Participant: NSObject, ObservableObject, Loggable {
                 }
             }
 
-            // notify object change when any state updates
+            // Notify when state mutates
             Task.detached { @MainActor in
+                // Notify Participant
                 self.objectWillChange.send()
+                // Notify Room
+                self.room.objectWillChange.send()
             }
         }
     }

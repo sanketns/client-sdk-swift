@@ -83,9 +83,10 @@ public class LocalParticipant: Participant {
             self.room.engine.signalClient.sendAddTrack(cid: track.mediaTrack.trackId,
                                                        name: track.name,
                                                        type: track.kind.toPBType(),
-                                                       source: track.source.toPBType()) { populator in
+                                                       source: track.source.toPBType(),
+                                                       encryption: self.room.e2eeManager?.e2eeOptions.encryptionType.toPBType() ?? .none ) { populator in
 
-                let transInit = DispatchQueue.webRTC.sync { RTCRtpTransceiverInit() }
+                let transInit = DispatchQueue.liveKitWebRTC.sync { RTCRtpTransceiverInit() }
                 transInit.direction = .sendOnly
 
                 if let track = track as? LocalVideoTrack {
@@ -154,14 +155,18 @@ public class LocalParticipant: Participant {
             track.set(transport: publisher,
                       rtpSender: transceiver.sender)
 
-            // prefer to maintainResolution for screen share
-            if case .screenShareVideo = track.source {
-                self.log("[publish] set degradationPreference to .maintainResolution")
-                let params = transceiver.sender.parameters
-                params.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainResolution.rawValue)
-                // changing params directly doesn't work so we need to update params
-                // and set it back to sender.parameters
-                transceiver.sender.parameters = params
+            if track is LocalVideoTrack {
+                let publishOptions = (publishOptions as? VideoPublishOptions) ?? self.room._state.options.defaultVideoPublishOptions
+                // if screen share or simulcast is enabled,
+                // degrade resolution by using server's layer switching logic instead of WebRTC's logic
+                if track.source == .screenShareVideo || publishOptions.simulcast {
+                    self.log("[publish] set degradationPreference to .maintainResolution")
+                    let params = transceiver.sender.parameters
+                    params.degradationPreference = NSNumber(value: RTCDegradationPreference.maintainResolution.rawValue)
+                    // changing params directly doesn't work so we need to update params
+                    // and set it back to sender.parameters
+                    transceiver.sender.parameters = params
+                }
             }
 
             self.room.engine.publisherShouldNegotiate()
@@ -534,9 +539,11 @@ extension LocalParticipant {
                 var localTrack: LocalVideoTrack?
                 let options = (captureOptions as? ScreenShareCaptureOptions) ?? room._state.options.defaultScreenShareCaptureOptions
                 if options.useBroadcastExtension {
-                    let screenShareExtensionId = Bundle.main.infoDictionary?[BroadcastScreenCapturer.kRTCScreenSharingExtension] as? String
-                    RPSystemBroadcastPickerView.show(for: screenShareExtensionId,
-                                                     showsMicrophoneButton: false)
+                    Task { @MainActor in
+                        let screenShareExtensionId = Bundle.main.infoDictionary?[BroadcastScreenCapturer.kRTCScreenSharingExtension] as? String
+                        RPSystemBroadcastPickerView.show(for: screenShareExtensionId,
+                                                         showsMicrophoneButton: false)
+                    }
                     localTrack = LocalVideoTrack.createBroadcastScreenCapturerTrack(options: options)
                 } else {
                     localTrack = LocalVideoTrack.createInAppScreenShareTrack(options: options)
