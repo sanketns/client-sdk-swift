@@ -72,16 +72,16 @@ internal extension Engine {
 
     static private let encoderFactory: RTCVideoEncoderFactory = {
         let encoderFactory = VideoEncoderFactory()
-        #if LK_USE_LIVEKIT_WEBRTC_BUILD
         return VideoEncoderFactorySimulcast(primary: encoderFactory,
                                             fallback: encoderFactory)
 
-        #else
-        return encoderFactory
-        #endif
     }()
 
     static private let decoderFactory = VideoDecoderFactory()
+
+    static let audioProcessingModule: RTCDefaultAudioProcessingModule = {
+        RTCDefaultAudioProcessingModule()
+    }()
 
     static let peerConnectionFactory: RTCPeerConnectionFactory = {
 
@@ -96,14 +96,10 @@ internal extension Engine {
 
         logger.log("Initializing PeerConnectionFactory...", type: Engine.self)
 
-        #if LK_USE_LIVEKIT_WEBRTC_BUILD
         return RTCPeerConnectionFactory(bypassVoiceProcessing: bypassVoiceProcessing,
                                         encoderFactory: encoderFactory,
-                                        decoderFactory: decoderFactory)
-        #else
-        return RTCPeerConnectionFactory(encoderFactory: encoderFactory,
-                                        decoderFactory: decoderFactory)
-        #endif
+                                        decoderFactory: decoderFactory,
+                                        audioProcessingModule: audioProcessingModule)
     }()
 
     // forbid direct access
@@ -114,55 +110,51 @@ internal extension Engine {
 
     static func createPeerConnection(_ configuration: RTCConfiguration,
                                      constraints: RTCMediaConstraints) -> RTCPeerConnection? {
-        DispatchQueue.webRTC.sync { peerConnectionFactory.peerConnection(with: configuration,
-                                                                         constraints: constraints,
-                                                                         delegate: nil) }
+        DispatchQueue.liveKitWebRTC.sync { peerConnectionFactory.peerConnection(with: configuration,
+                                                                                constraints: constraints,
+                                                                                delegate: nil) }
     }
 
     static func createVideoSource(forScreenShare: Bool) -> RTCVideoSource {
-        #if LK_USE_LIVEKIT_WEBRTC_BUILD
-        DispatchQueue.webRTC.sync { peerConnectionFactory.videoSource(forScreenCast: forScreenShare) }
-        #else
-        DispatchQueue.webRTC.sync { peerConnectionFactory.videoSource() }
-        #endif
+        DispatchQueue.liveKitWebRTC.sync { peerConnectionFactory.videoSource(forScreenCast: forScreenShare) }
     }
 
     static func createVideoTrack(source: RTCVideoSource) -> RTCVideoTrack {
-        DispatchQueue.webRTC.sync { peerConnectionFactory.videoTrack(with: source,
-                                                                     trackId: UUID().uuidString) }
+        DispatchQueue.liveKitWebRTC.sync { peerConnectionFactory.videoTrack(with: source,
+                                                                            trackId: UUID().uuidString) }
     }
 
     static func createAudioSource(_ constraints: RTCMediaConstraints?) -> RTCAudioSource {
-        DispatchQueue.webRTC.sync { peerConnectionFactory.audioSource(with: constraints) }
+        DispatchQueue.liveKitWebRTC.sync { peerConnectionFactory.audioSource(with: constraints) }
     }
 
     static func createAudioTrack(source: RTCAudioSource) -> RTCAudioTrack {
-        DispatchQueue.webRTC.sync { peerConnectionFactory.audioTrack(with: source,
-                                                                     trackId: UUID().uuidString) }
+        DispatchQueue.liveKitWebRTC.sync { peerConnectionFactory.audioTrack(with: source,
+                                                                            trackId: UUID().uuidString) }
     }
 
     static func createDataChannelConfiguration(ordered: Bool = true,
                                                maxRetransmits: Int32 = -1) -> RTCDataChannelConfiguration {
-        let result = DispatchQueue.webRTC.sync { RTCDataChannelConfiguration() }
+        let result = DispatchQueue.liveKitWebRTC.sync { RTCDataChannelConfiguration() }
         result.isOrdered = ordered
         result.maxRetransmits = maxRetransmits
         return result
     }
 
     static func createDataBuffer(data: Data) -> RTCDataBuffer {
-        DispatchQueue.webRTC.sync { RTCDataBuffer(data: data, isBinary: true) }
+        DispatchQueue.liveKitWebRTC.sync { RTCDataBuffer(data: data, isBinary: true) }
     }
 
     static func createIceCandidate(fromJsonString: String) throws -> RTCIceCandidate {
-        try DispatchQueue.webRTC.sync { try RTCIceCandidate(fromJsonString: fromJsonString) }
+        try DispatchQueue.liveKitWebRTC.sync { try RTCIceCandidate(fromJsonString: fromJsonString) }
     }
 
     static func createSessionDescription(type: RTCSdpType, sdp: String) -> RTCSessionDescription {
-        DispatchQueue.webRTC.sync { RTCSessionDescription(type: type, sdp: sdp) }
+        DispatchQueue.liveKitWebRTC.sync { RTCSessionDescription(type: type, sdp: sdp) }
     }
 
     static func createVideoCapturer() -> RTCVideoCapturer {
-        DispatchQueue.webRTC.sync { RTCVideoCapturer() }
+        DispatchQueue.liveKitWebRTC.sync { RTCVideoCapturer() }
     }
 
     static func createRtpEncodingParameters(rid: String? = nil,
@@ -170,7 +162,7 @@ internal extension Engine {
                                             scaleDownBy: Double? = nil,
                                             active: Bool = true) -> RTCRtpEncodingParameters {
 
-        let result = DispatchQueue.webRTC.sync { RTCRtpEncodingParameters() }
+        let result = DispatchQueue.liveKitWebRTC.sync { RTCRtpEncodingParameters() }
 
         result.isActive = active
         result.rid = rid

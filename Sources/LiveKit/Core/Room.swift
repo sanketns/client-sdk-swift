@@ -63,6 +63,15 @@ public class Room: NSObject, ObservableObject, Loggable {
     @objc
     public var isRecording: Bool { _state.isRecording }
 
+    @objc
+    public var maxParticipants: Int { _state.maxParticipants }
+
+    @objc
+    public var participantCount: Int { _state.numParticipants }
+
+    @objc
+    public var publishersCount: Int { _state.numPublishers }
+
     // expose engine's vars
     @objc
     public var url: String? { engine._state.url }
@@ -85,6 +94,8 @@ public class Room: NSObject, ObservableObject, Loggable {
     // Reference to Engine
     internal let engine: Engine
 
+    public var e2eeManager: E2EEManager?
+
     internal struct State: Equatable {
         var options: RoomOptions
 
@@ -99,6 +110,10 @@ public class Room: NSObject, ObservableObject, Loggable {
         var activeSpeakers = [Participant]()
 
         var isRecording: Bool = false
+
+        var maxParticipants: Int = 0
+        var numParticipants: Int = 0
+        var numPublishers: Int = 0
 
         @discardableResult
         mutating func getOrCreateRemoteParticipant(sid: Sid, info: Livekit_ParticipantInfo? = nil, room: Room) -> RemoteParticipant {
@@ -159,7 +174,7 @@ public class Room: NSObject, ObservableObject, Loggable {
             // metadata updated
             if let metadata = newState.metadata, metadata != oldState.metadata,
                // don't notify if empty string (first time only)
-               (oldState.metadata == nil ? !metadata.isEmpty : true) {
+               oldState.metadata == nil ? !metadata.isEmpty : true {
 
                 // proceed only if connected...
                 self.engine.executeIfConnected { [weak self] in
@@ -185,6 +200,7 @@ public class Room: NSObject, ObservableObject, Loggable {
                 }
             }
 
+            // Notify Room when state mutates
             Task.detached { @MainActor in
                 self.objectWillChange.send()
             }
@@ -193,6 +209,10 @@ public class Room: NSObject, ObservableObject, Loggable {
 
     deinit {
         log()
+        // cleanup for E2EE
+        if self.e2eeManager != nil {
+            self.e2eeManager?.cleanUp()
+        }
     }
 
     @discardableResult
@@ -213,6 +233,12 @@ public class Room: NSObject, ObservableObject, Loggable {
         // update options if specified
         if let roomOptions = roomOptions, roomOptions != state.options {
             _state.mutate { $0.options = roomOptions }
+        }
+
+        // enable E2EE
+        if roomOptions?.e2eeOptions != nil {
+            self.e2eeManager = E2EEManager(e2eeOptions: roomOptions!.e2eeOptions!)
+            self.e2eeManager!.setup(room: self)
         }
 
         // monitor.start(queue: monitorQueue)
@@ -371,7 +397,7 @@ extension Room: AppStateDelegate {
         guard _state.options.suspendLocalVideoTracksInBackground else { return }
 
         guard let localParticipant = localParticipant else { return }
-        let promises = localParticipant.localVideoTracks.map { $0.suspend() }
+        let promises = localParticipant.localVideoTracks.filter { $0.source == .camera }.map { $0.suspend() }
 
         guard !promises.isEmpty else { return }
 
@@ -383,7 +409,7 @@ extension Room: AppStateDelegate {
     func appWillEnterForeground() {
 
         guard let localParticipant = localParticipant else { return }
-        let promises = localParticipant.localVideoTracks.map { $0.resume() }
+        let promises = localParticipant.localVideoTracks.filter { $0.source == .camera }.map { $0.resume() }
 
         guard !promises.isEmpty else { return }
 
@@ -414,5 +440,15 @@ extension Room {
     public static var bypassVoiceProcessing: Bool {
         get { Engine.bypassVoiceProcessing }
         set { Engine.bypassVoiceProcessing = newValue }
+    }
+}
+
+// MARK: - Audio Processing
+
+extension Room {
+
+    @objc
+    public static var audioProcessingModule: RTCDefaultAudioProcessingModule {
+        Engine.audioProcessingModule
     }
 }
