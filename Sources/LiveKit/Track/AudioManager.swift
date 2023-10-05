@@ -55,7 +55,8 @@ public class AudioManager: Loggable {
 
         public var localTracksCount: Int = 0
         public var remoteTracksCount: Int = 0
-        public var preferSpeakerOutput: Bool = true
+        public var preferSpeakerOutput: Bool = false
+
 
         public var trackState: TrackState {
 
