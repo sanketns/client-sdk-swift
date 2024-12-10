@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,8 +15,12 @@
  */
 
 import Foundation
-import WebRTC
 
 @objc
 public protocol AudioTrack where Self: Track {
+    @objc(addAudioRenderer:)
+    func add(audioRenderer: AudioRenderer)
+
+    @objc(removeAudioRenderer:)
+    func remove(audioRenderer: AudioRenderer)
 }

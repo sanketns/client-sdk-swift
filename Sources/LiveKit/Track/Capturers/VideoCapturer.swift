@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,23 +15,23 @@
  */
 
 import Foundation
-import WebRTC
-import Promises
 
-public protocol VideoCapturerProtocol {
-    var capturer: RTCVideoCapturer { get }
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
+
+protocol VideoCapturerProtocol {
+    var capturer: LKRTCVideoCapturer { get }
 }
 
 extension VideoCapturerProtocol {
-
-    public var capturer: RTCVideoCapturer {
-        fatalError("Must be implemented")
-    }
+    public var capturer: LKRTCVideoCapturer { fatalError("Must be implemented") }
 }
 
 @objc
 public protocol VideoCapturerDelegate: AnyObject {
-
     @objc(capturer:didUpdateDimensions:) optional
     func capturer(_ capturer: VideoCapturer, didUpdate dimensions: Dimensions?)
 
@@ -41,12 +41,10 @@ public protocol VideoCapturerDelegate: AnyObject {
 
 // Intended to be a base class for video capturers
 public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
-
     // MARK: - MulticastDelegate
 
-    internal var delegates = MulticastDelegate<VideoCapturerDelegate>()
-
-    internal let queue = DispatchQueue(label: "LiveKitSDK.videoCapturer", qos: .default)
+    public let delegates = MulticastDelegate<VideoCapturerDelegate>(label: "VideoCapturerDelegate")
+    public let rendererDelegates = MulticastDelegate<VideoRenderer>(label: "VideoCapturerRendererDelegate")
 
     /// Array of supported pixel formats that can be used to capture a frame.
     ///
@@ -55,7 +53,7 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
     /// `kCVPixelFormatType_420YpCbCr8BiPlanarFullRange`,
     /// `kCVPixelFormatType_32BGRA`,
     /// `kCVPixelFormatType_32ARGB`.
-    public static let supportedPixelFormats = DispatchQueue.liveKitWebRTC.sync { RTCCVPixelBuffer.supportedPixelFormats() }
+    public static let supportedPixelFormats = DispatchQueue.liveKitWebRTC.sync { LKRTCCVPixelBuffer.supportedPixelFormats() }
 
     public static func createTimeStampNs() -> Int64 {
         let systemTime = ProcessInfo.processInfo.systemUptime
@@ -63,29 +61,41 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
     }
 
     @objc
-    public enum CapturerState: Int {
+    public enum CapturerState: Int, Sendable {
         case stopped
         case started
     }
 
-    internal weak var delegate: RTCVideoCapturerDelegate?
+    private weak var delegate: LKRTCVideoCapturerDelegate?
 
-    internal struct State: Equatable {
-        var dimensionsCompleter = Completer<Dimensions>()
+    let dimensionsCompleter = AsyncCompleter<Dimensions>(label: "Dimensions", defaultTimeout: .defaultCaptureStart)
+
+    struct State: Equatable {
         // Counts calls to start/stopCapturer so multiple Tracks can use the same VideoCapturer.
         var startStopCounter: Int = 0
+        var dimensions: Dimensions? = nil
     }
 
-    internal var _state = StateSync(State())
+    var _state = StateSync(State())
 
-    public internal(set) var dimensions: Dimensions? {
-        didSet {
-            guard oldValue != dimensions else { return }
-            log("[publish] \(String(describing: oldValue)) -> \(String(describing: dimensions))")
-            delegates.notify { $0.capturer?(self, didUpdate: self.dimensions) }
+    public var dimensions: Dimensions? { _state.dimensions }
 
-            log("[publish] dimensions: \(String(describing: dimensions))")
-            _state.mutate { $0.dimensionsCompleter.set(value: dimensions) }
+    func set(dimensions newValue: Dimensions?) {
+        let didUpdate = _state.mutate {
+            let oldDimensions = $0.dimensions
+            $0.dimensions = newValue
+            return newValue != oldDimensions
+        }
+
+        if didUpdate {
+            delegates.notify { $0.capturer?(self, didUpdate: newValue) }
+
+            if let newValue {
+                log("[publish] dimensions: \(String(describing: newValue))")
+                dimensionsCompleter.resume(returning: newValue)
+            } else {
+                dimensionsCompleter.reset()
+            }
         }
     }
 
@@ -93,12 +103,12 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
         _state.startStopCounter == 0 ? .stopped : .started
     }
 
-    init(delegate: RTCVideoCapturerDelegate) {
+    init(delegate: LKRTCVideoCapturerDelegate) {
         self.delegate = delegate
         super.init()
 
         _state.onDidMutate = { [weak self] newState, oldState in
-            guard let self = self else { return }
+            guard let self else { return }
             if oldState.startStopCounter != newState.startStopCounter {
                 self.log("startStopCounter \(oldState.startStopCounter) -> \(newState.startStopCounter)")
             }
@@ -106,72 +116,125 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
     }
 
     deinit {
-        assert(captureState == .stopped, "captureState is not .stopped, capturer must be stopped before deinit.")
+        if captureState != .stopped {
+            log("captureState is not .stopped, capturer must be stopped before deinit.", .error)
+        }
     }
 
     /// Requests video capturer to start generating frames. ``Track/start()-dk8x`` calls this automatically.
     ///
     /// ``startCapture()`` and ``stopCapture()`` calls must be balanced. For example, if ``startCapture()`` is called 2 times, ``stopCapture()`` must be called 2 times also.
     /// Returns true when capturing should start, returns fals if capturing already started.
-    public func startCapture() -> Promise<Bool> {
-
-        Promise(on: queue) { () -> Bool in
-
-            let didStart = self._state.mutate {
-                // counter was 0, so did start capturing with this call
-                let didStart = $0.startStopCounter == 0
-                $0.startStopCounter += 1
-                return didStart
-            }
-
-            guard didStart else {
-                // already started
-                return false
-            }
-
-            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.started)" }) {
-                $0.capturer?(self, didUpdate: .started)
-            }
-
-            return true
+    @objc
+    @discardableResult
+    public func startCapture() async throws -> Bool {
+        let didStart = _state.mutate {
+            // Counter was 0, so did start capturing with this call
+            let didStart = $0.startStopCounter == 0
+            $0.startStopCounter += 1
+            return didStart
         }
+
+        guard didStart else {
+            // Already started
+            return false
+        }
+
+        delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.started)" }) {
+            $0.capturer?(self, didUpdate: .started)
+        }
+
+        return true
     }
 
     /// Requests video capturer to stop generating frames. ``Track/stop()-6jeq0`` calls this automatically.
     ///
     /// See ``startCapture()`` for more details.
     /// Returns true when capturing should stop, returns fals if capturing already stopped.
-    public func stopCapture() -> Promise<Bool> {
-
-        Promise(on: queue) { () -> Bool in
-
-            let didStop = self._state.mutate {
-                // counter was already 0, so did NOT stop capturing with this call
-                if $0.startStopCounter <= 0 {
-                    return false
-                }
-                $0.startStopCounter -= 1
-                return $0.startStopCounter <= 0
-            }
-
-            guard didStop else {
-                // already stopped
+    @objc
+    @discardableResult
+    public func stopCapture() async throws -> Bool {
+        let didStop = _state.mutate {
+            // Counter was already 0, so did NOT stop capturing with this call
+            if $0.startStopCounter <= 0 {
                 return false
             }
+            $0.startStopCounter -= 1
+            return $0.startStopCounter <= 0
+        }
 
-            self.delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.stopped)" }) {
-                $0.capturer?(self, didUpdate: .stopped)
-            }
+        guard didStop else {
+            // Already stopped
+            return false
+        }
 
-            self._state.mutate { $0.dimensionsCompleter.reset() }
+        delegates.notify(label: { "capturer.didUpdate state: \(CapturerState.stopped)" }) {
+            $0.capturer?(self, didUpdate: .stopped)
+        }
 
-            return true
+        dimensionsCompleter.reset()
+
+        return true
+    }
+
+    @objc
+    @discardableResult
+    public func restartCapture() async throws -> Bool {
+        try await stopCapture()
+        return try await startCapture()
+    }
+}
+
+extension VideoCapturer {
+    // Capture a RTCVideoFrame
+    func capture(frame: LKRTCVideoFrame,
+                 capturer: LKRTCVideoCapturer,
+                 device: AVCaptureDevice? = nil,
+                 options: VideoCaptureOptions)
+    {
+        _processFrame(frame, capturer: capturer, device: device, options: options)
+    }
+
+    // Capture a CMSampleBuffer
+    func capture(sampleBuffer: CMSampleBuffer,
+                 capturer: LKRTCVideoCapturer,
+                 options: VideoCaptureOptions)
+    {
+        delegate?.capturer(capturer, didCapture: sampleBuffer) { [weak self] frame in
+            self?._processFrame(frame, capturer: capturer, device: nil, options: options)
         }
     }
 
-    public func restartCapture() -> Promise<Bool> {
-        stopCapture().then(on: queue) { _ -> Promise<Bool> in
-            self.startCapture()
+    // Capture a CVPixelBuffer
+    func capture(pixelBuffer: CVPixelBuffer,
+                 capturer: LKRTCVideoCapturer,
+                 timeStampNs: Int64 = VideoCapturer.createTimeStampNs(),
+                 rotation: VideoRotation = ._0,
+                 options: VideoCaptureOptions)
+    {
+        delegate?.capturer(capturer, didCapture: pixelBuffer, timeStampNs: timeStampNs, rotation: rotation.toRTCType()) { [weak self] frame in
+            self?._processFrame(frame, capturer: capturer, device: nil, options: options)
+        }
+    }
+
+    // Process the captured frame
+    private func _processFrame(_ frame: LKRTCVideoFrame,
+                               capturer: LKRTCVideoCapturer,
+                               device: AVCaptureDevice?,
+                               options: VideoCaptureOptions)
+    {
+        // Resolve real dimensions (apply frame rotation)
+        set(dimensions: Dimensions(width: frame.width, height: frame.height).apply(rotation: frame.rotation))
+
+        delegate?.capturer(capturer, didCapture: frame)
+
+        if rendererDelegates.isDelegatesNotEmpty {
+            if let lkVideoFrame = frame.toLKType() {
+                rendererDelegates.notify { renderer in
+                    renderer.render?(frame: lkVideoFrame)
+                    renderer.render?(frame: lkVideoFrame, captureDevice: device, captureOptions: options)
+                }
+            }
         }
     }
 }

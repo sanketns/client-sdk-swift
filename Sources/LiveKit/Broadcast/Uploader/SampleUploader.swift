@@ -1,10 +1,18 @@
-//
-//  SampleUploader.swift
-//  Broadcast Extension
-//
-//  Created by Alex-Dan Bumbu on 22/03/2021.
-//  Copyright © 2021 8x8, Inc. All rights reserved.
-//
+/*
+ * Copyright 2024 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #if os(iOS)
 
@@ -19,7 +27,6 @@ private enum Constants {
 }
 
 class SampleUploader {
-
     private static var imageContext = CIContext(options: nil)
 
     @Atomic private var isReady = false
@@ -32,7 +39,7 @@ class SampleUploader {
 
     init(connection: BroadcastUploadSocketConnection) {
         self.connection = connection
-        self.serialQueue = DispatchQueue(label: "io.livekit.broadcast.sampleUploader")
+        serialQueue = DispatchQueue(label: "io.livekit.broadcast.sampleUploader")
 
         setupConnection()
     }
@@ -56,7 +63,6 @@ class SampleUploader {
 }
 
 private extension SampleUploader {
-
     func setupConnection() {
         connection.didOpen = { [weak self] in
             self?.isReady = true
@@ -71,14 +77,14 @@ private extension SampleUploader {
     }
 
     @discardableResult func sendDataChunk() -> Bool {
-        guard let dataToSend = dataToSend else {
+        guard let dataToSend else {
             return false
         }
 
         var bytesLeft = dataToSend.count - byteIndex
         var length = bytesLeft > Constants.bufferMaxLength ? Constants.bufferMaxLength : bytesLeft
 
-        length = dataToSend[byteIndex..<(byteIndex + length)].withUnsafeBytes {
+        length = dataToSend[byteIndex ..< (byteIndex + length)].withUnsafeBytes {
             guard let ptr = $0.bindMemory(to: UInt8.self).baseAddress else {
                 return 0
             }
@@ -110,13 +116,13 @@ private extension SampleUploader {
         CVPixelBufferLockBaseAddress(imageBuffer, .readOnly)
 
         let scaleFactor = 1.0
-        let width = CVPixelBufferGetWidth(imageBuffer)/Int(scaleFactor)
-        let height = CVPixelBufferGetHeight(imageBuffer)/Int(scaleFactor)
+        let width = CVPixelBufferGetWidth(imageBuffer) / Int(scaleFactor)
+        let height = CVPixelBufferGetHeight(imageBuffer) / Int(scaleFactor)
 
         let orientation = CMGetAttachment(buffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil)?.uintValue ?? 0
 
-        let scaleTransform = CGAffineTransform(scaleX: CGFloat(1.0/scaleFactor), y: CGFloat(1.0/scaleFactor))
-        let bufferData = self.jpegData(from: imageBuffer, scale: scaleTransform)
+        let scaleTransform = CGAffineTransform(scaleX: CGFloat(1.0 / scaleFactor), y: CGFloat(1.0 / scaleFactor))
+        let bufferData = jpegData(from: imageBuffer, scale: scaleTransform)
 
         CVPixelBufferUnlockBaseAddress(imageBuffer, .readOnly)
 

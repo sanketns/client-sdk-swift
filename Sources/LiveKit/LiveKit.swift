@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,11 +15,16 @@
  */
 
 import Foundation
-import WebRTC
-import Promises
-import Logging
 
-internal let logger = Logger(label: "LiveKitSDK")
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+internal import Logging
+#else
+@_implementationOnly import LiveKitWebRTC
+@_implementationOnly import Logging
+#endif
+
+let logger = Logger(label: "LiveKitSDK")
 
 /// The open source platform for real-time communication.
 ///
@@ -32,33 +37,23 @@ internal let logger = Logger(label: "LiveKitSDK")
 /// Download the [Multiplatform SwiftUI Example](https://github.com/livekit/multiplatform-swiftui-example)
 /// to try out the features.
 @objc
-public class LiveKit: NSObject {
-
+public class LiveKitSDK: NSObject {
     @objc(sdkVersion)
-    public static let version = "1.1.2"
-
-    @available(*, deprecated, message: "Use Room.connect() instead, protocol v8 and higher do not support this method")
-    public static func connect(
-        _ url: String,
-        _ token: String,
-        delegate: RoomDelegate? = nil,
-        connectOptions: ConnectOptions = ConnectOptions(),
-        roomOptions: RoomOptions = RoomOptions()) -> Promise<Room> {
-
-        let room = Room(delegate: delegate,
-                        // Override with protocol v7 or lower when using this deprecated method
-                        connectOptions: connectOptions.protocolVersion >= .v8 ? connectOptions.copyWith(protocolVersion: .v7) : connectOptions,
-                        roomOptions: roomOptions)
-
-        return room.connect(url, token)
-    }
+    public static let version = "2.0.19"
 
     @objc
     public static func setLoggerStandardOutput() {
-        LoggingSystem.bootstrap({
+        LoggingSystem.bootstrap {
             var logHandler = StreamLogHandler.standardOutput(label: $0)
             logHandler.logLevel = .debug
             return logHandler
-        })
+        }
+    }
+
+    /// Notify the SDK to start initializing for faster connection/publishing later on. This is non-blocking.
+    @objc
+    public static func prepare() {
+        // TODO: Add RTC related initializations
+        DeviceManager.prepare()
     }
 }

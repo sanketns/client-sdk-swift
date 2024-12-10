@@ -1,11 +1,10 @@
-PROTO_SOURCE=../protocol
+PROTO_SOURCE=../protocol/protobufs
 
 proto: protoc protoc-swift
 	protoc --swift_out=Sources/LiveKit/protos -I=${PROTO_SOURCE} \
 		${PROTO_SOURCE}/livekit_models.proto \
-		${PROTO_SOURCE}/livekit_rtc.proto
-
-	protoc --swift_opt=Visibility=Public --swift_out=Sources/LiveKit/protos -I=. livekit_ipc.proto
+		${PROTO_SOURCE}/livekit_rtc.proto \
+		${PROTO_SOURCE}/livekit_metrics.proto
 
 docs: swift-docs
 	swift doc generate Sources/LiveKit \

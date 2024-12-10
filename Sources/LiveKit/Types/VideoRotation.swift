@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +14,27 @@
  * limitations under the License.
  */
 
-import Foundation
-import WebRTC
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
 
-public typealias VideoRotation = RTCVideoRotation
+public enum VideoRotation: Int, Sendable {
+    case _0 = 0
+    case _90 = 90
+    case _180 = 180
+    case _270 = 270
+}
+
+extension RTCVideoRotation {
+    func toLKType() -> VideoRotation {
+        VideoRotation(rawValue: rawValue)!
+    }
+}
+
+extension VideoRotation {
+    func toRTCType() -> RTCVideoRotation {
+        RTCVideoRotation(rawValue: rawValue)!
+    }
+}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,60 +14,75 @@
  * limitations under the License.
  */
 
-import Foundation
-import WebRTC
-import Promises
+import AVFoundation
+import CoreMedia
+
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
 
 @objc
 public class RemoteAudioTrack: Track, RemoteTrack, AudioTrack {
-
     /// Volume with range 0.0 - 1.0
     public var volume: Double {
         get {
-            guard let audioTrack = mediaTrack as? RTCAudioTrack else { return 0 }
+            guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return 0 }
             return audioTrack.source.volume / 10
         }
         set {
-            guard let audioTrack = mediaTrack as? RTCAudioTrack else { return }
+            guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return }
             audioTrack.source.volume = newValue * 10
         }
     }
 
+    private lazy var _adapter = AudioRendererAdapter()
+
     init(name: String,
          source: Track.Source,
-         track: RTCMediaStreamTrack) {
-
+         track: LKRTCMediaStreamTrack,
+         reportStatistics: Bool)
+    {
         super.init(name: name,
                    kind: .audio,
                    source: source,
-                   track: track)
+                   track: track,
+                   reportStatistics: reportStatistics)
     }
 
-    override public func start() -> Promise<Bool> {
-        super.start().then(on: queue) { didStart -> Bool in
-            if didStart {
-                AudioManager.shared.trackDidStart(.remote)
-            }
-            return didStart
+    deinit {
+        // Directly remove the adapter without unnecessary checks
+        guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return }
+        audioTrack.remove(_adapter)
+    }
+
+    public func add(audioRenderer: AudioRenderer) {
+        let wasEmpty = _adapter.countDelegates == 0
+        _adapter.add(delegate: audioRenderer)
+        // Attach adapter only if it wasn't attached before
+        if wasEmpty {
+            guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return }
+            audioTrack.add(_adapter)
         }
     }
 
-    override public func stop() -> Promise<Bool> {
-        super.stop().then(on: queue) { didStop -> Bool in
-            if didStop {
-                AudioManager.shared.trackDidStop(.remote)
-            }
-            return didStop
+    public func remove(audioRenderer: AudioRenderer) {
+        _adapter.remove(delegate: audioRenderer)
+        // Remove adapter only if there are no more delegates
+        if _adapter.countDelegates == 0 {
+            guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return }
+            audioTrack.remove(_adapter)
         }
     }
 
-    public func add(audioRenderer: RTCAudioRenderer) {
-        guard let audioTrack = mediaTrack as? RTCAudioTrack else { return  }
-        audioTrack.add(audioRenderer)
+    // MARK: - Internal
+
+    override func startCapture() async throws {
+        try await AudioManager.shared.trackDidStart(.remote)
     }
 
-    public func remove(audioRenderer: RTCAudioRenderer) {
-        guard let audioTrack = mediaTrack as? RTCAudioTrack else { return }
-        audioTrack.remove(audioRenderer)
+    override func stopCapture() async throws {
+        try await AudioManager.shared.trackDidStop(.remote)
     }
 }

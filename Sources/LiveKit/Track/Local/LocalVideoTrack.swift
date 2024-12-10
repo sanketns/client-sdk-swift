@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,24 +15,27 @@
  */
 
 import Foundation
-import WebRTC
-import Promises
+
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
 
 @objc
-public class LocalVideoTrack: Track, LocalTrack, VideoTrack {
-
+public class LocalVideoTrack: Track, LocalTrack {
     @objc
     public internal(set) var capturer: VideoCapturer
 
-    @objc
-    public internal(set) var videoSource: RTCVideoSource
+    var videoSource: LKRTCVideoSource
 
-    internal init(name: String,
-                  source: Track.Source,
-                  capturer: VideoCapturer,
-                  videoSource: RTCVideoSource) {
-
-        let rtcTrack = Engine.createVideoTrack(source: videoSource)
+    init(name: String,
+         source: Track.Source,
+         capturer: VideoCapturer,
+         videoSource: LKRTCVideoSource,
+         reportStatistics: Bool)
+    {
+        let rtcTrack = RTC.createVideoTrack(source: videoSource)
         rtcTrack.isEnabled = true
 
         self.capturer = capturer
@@ -41,61 +44,53 @@ public class LocalVideoTrack: Track, LocalTrack, VideoTrack {
         super.init(name: name,
                    kind: .video,
                    source: source,
-                   track: rtcTrack)
+                   track: rtcTrack,
+                   reportStatistics: reportStatistics)
     }
 
-    override public func start() -> Promise<Bool> {
-        super.start().then(on: queue) { didStart in
-            self.capturer.startCapture().then(on: self.queue) { _ in didStart }
-        }
+    public func mute() async throws {
+        try await super._mute()
     }
 
-    override public func stop() -> Promise<Bool> {
-        super.stop().then(on: queue) { didStop in
-            self.capturer.stopCapture().then(on: self.queue) { _ in didStop }
-        }
+    public func unmute() async throws {
+        try await super._unmute()
+    }
+
+    // MARK: - Internal
+
+    override func startCapture() async throws {
+        try await capturer.startCapture()
+    }
+
+    override func stopCapture() async throws {
+        try await capturer.stopCapture()
     }
 }
 
-extension LocalVideoTrack {
+// MARK: - VideoTrack Protocol
 
+extension LocalVideoTrack: VideoTrack {
     public func add(videoRenderer: VideoRenderer) {
-        super._add(videoRenderer: videoRenderer)
+        capturer.rendererDelegates.add(delegate: videoRenderer)
     }
 
     public func remove(videoRenderer: VideoRenderer) {
-        super._remove(videoRenderer: videoRenderer)
+        capturer.rendererDelegates.remove(delegate: videoRenderer)
     }
 }
 
-// MARK: - Deprecated methods
-
-extension LocalVideoTrack {
-
-    @available(*, deprecated, message: "Use CameraCapturer's methods instead to switch cameras")
-    public func restartTrack(options: CameraCaptureOptions = CameraCaptureOptions()) -> Promise<Bool> {
-        guard let capturer = capturer as? CameraCapturer else {
-            return Promise(TrackError.state(message: "Must be an CameraCapturer"))
-        }
-        capturer.options = options
-        return capturer.restartCapture()
-    }
+public extension LocalVideoTrack {
+    var publishOptions: TrackPublishOptions? { super._state.lastPublishOptions }
+    var publishState: Track.PublishState { super._state.publishState }
 }
 
-extension LocalVideoTrack {
-
-    public var publishOptions: PublishOptions? { super._publishOptions }
-
-    public var publishState: Track.PublishState { super._publishState }
-}
-
-extension LocalVideoTrack {
-
+public extension LocalVideoTrack {
     /// Clone with same ``VideoCapturer``.
-    public func clone() -> LocalVideoTrack {
+    func clone() -> LocalVideoTrack {
         LocalVideoTrack(name: name,
                         source: source,
                         capturer: capturer,
-                        videoSource: videoSource)
+                        videoSource: videoSource,
+                        reportStatistics: _state.reportStatistics)
     }
 }

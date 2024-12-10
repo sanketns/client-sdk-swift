@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,28 +15,14 @@
  */
 
 import Foundation
-import WebRTC
 
 /// Options used when establishing a connection.
 @objc
-public class ConnectOptions: NSObject {
-
+public final class ConnectOptions: NSObject, Sendable {
     /// Automatically subscribe to ``RemoteParticipant``'s tracks.
     /// Defaults to true.
     @objc
     public let autoSubscribe: Bool
-
-    @objc
-    public let rtcConfiguration: RTCConfiguration
-
-    /// Providing a string will make the connection publish-only, suitable for iOS Broadcast Upload Extensions.
-    /// The string can be used to identify the publisher.
-    @objc
-    public let publishOnlyMode: String?
-
-    /// LiveKit server protocol version to use. Generally, it's not recommended to change this.
-    @objc
-    public let protocolVersion: ProtocolVersion
 
     /// The number of attempts to reconnect when the network disconnects.
     @objc
@@ -47,50 +33,77 @@ public class ConnectOptions: NSObject {
     public let reconnectAttemptDelay: TimeInterval
 
     @objc
-    public override init() {
-        self.autoSubscribe = true
-        self.rtcConfiguration = .liveKitDefault()
-        self.publishOnlyMode = nil
-        self.reconnectAttempts = 3
-        self.reconnectAttemptDelay = .defaultReconnectAttemptDelay
-        self.protocolVersion = .v9
+    public let primaryTransportConnectTimeout: TimeInterval
+
+    @objc
+    public let publisherTransportConnectTimeout: TimeInterval
+
+    /// Custom ice servers
+    @objc
+    public let iceServers: [IceServer]
+
+    @objc
+    public let iceTransportPolicy: IceTransportPolicy
+
+    /// LiveKit server protocol version to use. Generally, it's not recommended to change this.
+    @objc
+    public let protocolVersion: ProtocolVersion
+
+    @objc
+    override public init() {
+        autoSubscribe = true
+        reconnectAttempts = 3
+        reconnectAttemptDelay = .defaultReconnectAttemptDelay
+        primaryTransportConnectTimeout = .defaultTransportState
+        publisherTransportConnectTimeout = .defaultTransportState
+        iceServers = []
+        iceTransportPolicy = .all
+        protocolVersion = .v12
     }
 
     @objc
     public init(autoSubscribe: Bool = true,
-                rtcConfiguration: RTCConfiguration? = nil,
-                publishOnlyMode: String? = nil,
                 reconnectAttempts: Int = 3,
                 reconnectAttemptDelay: TimeInterval = .defaultReconnectAttemptDelay,
-                protocolVersion: ProtocolVersion = .v8) {
-
+                primaryTransportConnectTimeout: TimeInterval = .defaultTransportState,
+                publisherTransportConnectTimeout: TimeInterval = .defaultTransportState,
+                iceServers: [IceServer] = [],
+                iceTransportPolicy: IceTransportPolicy = .all,
+                protocolVersion: ProtocolVersion = .v12)
+    {
         self.autoSubscribe = autoSubscribe
-        self.rtcConfiguration = rtcConfiguration ?? .liveKitDefault()
-        self.publishOnlyMode = publishOnlyMode
         self.reconnectAttempts = reconnectAttempts
         self.reconnectAttemptDelay = reconnectAttemptDelay
+        self.primaryTransportConnectTimeout = primaryTransportConnectTimeout
+        self.publisherTransportConnectTimeout = publisherTransportConnectTimeout
+        self.iceServers = iceServers
+        self.iceTransportPolicy = iceTransportPolicy
         self.protocolVersion = protocolVersion
     }
 
     // MARK: - Equal
 
-    public override func isEqual(_ object: Any?) -> Bool {
+    override public func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? Self else { return false }
-        return self.autoSubscribe == other.autoSubscribe &&
-            self.rtcConfiguration == other.rtcConfiguration &&
-            self.publishOnlyMode == other.publishOnlyMode &&
-            self.reconnectAttempts == other.reconnectAttempts &&
-            self.reconnectAttemptDelay == other.reconnectAttemptDelay &&
-            self.protocolVersion == other.protocolVersion
+        return autoSubscribe == other.autoSubscribe &&
+            reconnectAttempts == other.reconnectAttempts &&
+            reconnectAttemptDelay == other.reconnectAttemptDelay &&
+            primaryTransportConnectTimeout == other.primaryTransportConnectTimeout &&
+            publisherTransportConnectTimeout == other.publisherTransportConnectTimeout &&
+            iceServers == other.iceServers &&
+            iceTransportPolicy == other.iceTransportPolicy &&
+            protocolVersion == other.protocolVersion
     }
 
-    public override var hash: Int {
+    override public var hash: Int {
         var hasher = Hasher()
         hasher.combine(autoSubscribe)
-        hasher.combine(rtcConfiguration)
-        hasher.combine(publishOnlyMode)
         hasher.combine(reconnectAttempts)
         hasher.combine(reconnectAttemptDelay)
+        hasher.combine(primaryTransportConnectTimeout)
+        hasher.combine(publisherTransportConnectTimeout)
+        hasher.combine(iceServers)
+        hasher.combine(iceTransportPolicy)
         hasher.combine(protocolVersion)
         return hasher.finalize()
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,26 +15,27 @@
  */
 
 import Foundation
-import WebRTC
-import Promises
+
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
 
 @objc
 public class Participant: NSObject, ObservableObject, Loggable {
-
     // MARK: - MulticastDelegate
 
-    internal var delegates = MulticastDelegate<ParticipantDelegate>()
-
-    internal let queue = DispatchQueue(label: "LiveKitSDK.participant", qos: .default)
+    public let delegates = MulticastDelegate<ParticipantDelegate>(label: "ParticipantDelegate")
 
     @objc
-    public var sid: Sid { _state.sid }
+    public var sid: Sid? { _state.sid }
 
     @objc
-    public var identity: String { _state.identity }
+    public var identity: Identity? { _state.identity }
 
     @objc
-    public var name: String { _state.name }
+    public var name: String? { _state.name }
 
     @objc
     public var audioLevel: Float { _state.audioLevel }
@@ -46,6 +47,9 @@ public class Participant: NSObject, ObservableObject, Loggable {
     public var metadata: String? { _state.metadata }
 
     @objc
+    public var attributes: [String: String] { _state.attributes }
+
+    @objc
     public var connectionQuality: ConnectionQuality { _state.connectionQuality }
 
     @objc
@@ -54,100 +58,123 @@ public class Participant: NSObject, ObservableObject, Loggable {
     @objc
     public var joinedAt: Date? { _state.joinedAt }
 
+    /// The kind of participant (i.e. a standard client participant, AI agent, etc.)
     @objc
-    public var tracks: [String: TrackPublication] { _state.tracks }
+    public var kind: Kind { _state.kind }
+
+    @objc
+    public var trackPublications: [Track.Sid: TrackPublication] { _state.trackPublications }
 
     @objc
     public var audioTracks: [TrackPublication] {
-        _state.tracks.values.filter { $0.kind == .audio }
+        _state.trackPublications.values.filter { $0.kind == .audio }
     }
 
     @objc
     public var videoTracks: [TrackPublication] {
-        _state.tracks.values.filter { $0.kind == .video }
+        _state.trackPublications.values.filter { $0.kind == .video }
     }
 
-    internal var info: Livekit_ParticipantInfo?
+    @objc
+    public var agentState: AgentState {
+        guard case .agent = kind else { return .unknown }
+        guard let attrString = _state.attributes[agentStateAttributeKey] else { return .connecting }
+        guard let state = AgentState.fromString(attrString) else { return .connecting }
+        return state
+    }
+
+    var info: Livekit_ParticipantInfo?
 
     // Reference to the Room this Participant belongs to
-    public let room: Room
+    weak var _room: Room?
 
     // MARK: - Internal
 
-    internal struct State: Equatable, Hashable {
-        let sid: Sid
-        var identity: String
-        var name: String
+    struct State: Equatable, Hashable {
+        var sid: Sid?
+        var identity: Identity?
+        var name: String?
         var audioLevel: Float = 0.0
         var isSpeaking: Bool = false
         var metadata: String?
         var joinedAt: Date?
+        var kind: Kind = .unknown
         var connectionQuality: ConnectionQuality = .unknown
         var permissions = ParticipantPermissions()
-        var tracks = [String: TrackPublication]()
+        var trackPublications = [Track.Sid: TrackPublication]()
+        var attributes = [String: String]()
     }
 
-    internal var _state: StateSync<State>
+    let _state: StateSync<State>
 
-    internal init(sid: String,
-                  identity: String,
-                  name: String,
-                  room: Room) {
+    let _publishSerialRunner = SerialRunnerActor<LocalTrackPublication?>()
 
-        self.room = room
+    init(room: Room, sid: Sid? = nil, identity: Identity? = nil) {
+        _room = room
 
         // initial state
-        _state = StateSync(State(
-            sid: sid,
-            identity: identity,
-            name: name
-        ))
+        _state = StateSync(State(sid: sid, identity: identity))
 
         super.init()
 
         // trigger events when state mutates
         _state.onDidMutate = { [weak self] newState, oldState in
 
-            guard let self = self else { return }
+            guard let self, let room = self._room else { return }
 
             if newState.isSpeaking != oldState.isSpeaking {
                 self.delegates.notify(label: { "participant.didUpdate isSpeaking: \(self.isSpeaking)" }) {
-                    $0.participant?(self, didUpdate: self.isSpeaking)
+                    $0.participant?(self, didUpdateIsSpeaking: self.isSpeaking)
                 }
             }
 
             // metadata updated
-            if let metadata = newState.metadata, metadata != oldState.metadata,
+            if let newMetadata = newState.metadata, newMetadata != oldState.metadata,
                // don't notify if empty string (first time only)
-               oldState.metadata == nil ? !metadata.isEmpty : true {
-
-                self.delegates.notify(label: { "participant.didUpdate metadata: \(metadata)" }) {
-                    $0.participant?(self, didUpdate: metadata)
+               oldState.metadata == nil ? !newMetadata.isEmpty : true
+            {
+                self.delegates.notify(label: { "participant.didUpdate metadata: \(newMetadata)" }) {
+                    $0.participant?(self, didUpdateMetadata: newMetadata)
                 }
-                self.room.delegates.notify(label: { "room.didUpdate metadata: \(metadata)" }) {
-                    $0.room?(self.room, participant: self, didUpdate: metadata)
+                room.delegates.notify(label: { "room.didUpdate metadata: \(newMetadata)" }) {
+                    $0.room?(room, participant: self, didUpdateMetadata: newMetadata)
                 }
             }
 
             // name updated
-            if newState.name != oldState.name {
+            if let newName = newState.name, newName != oldState.name {
                 // notfy participant delegates
-                self.delegates.notify(label: { "participant.didUpdateName: \(newState.name)" }) {
-                    $0.participant?(self, didUpdateName: newState.name)
+                self.delegates.notify(label: { "participant.didUpdateName: \(String(describing: newName))" }) {
+                    $0.participant?(self, didUpdateName: newName)
                 }
                 // notify room delegates
-                self.room.delegates.notify(label: { "room.didUpdateName: \(newState.name)" }) {
-                    $0.room?(self.room, participant: self, didUpdateName: newState.name)
+                room.delegates.notify(label: { "room.didUpdateName: \(String(describing: newName))" }) {
+                    $0.room?(room, participant: self, didUpdateName: newName)
+                }
+            }
+
+            // attributes updated
+            if newState.attributes != oldState.attributes {
+                // Compute diff of attributes
+                let attributesDiff = computeAttributesDiff(oldValues: oldState.attributes, newValues: newState.attributes)
+                if !attributesDiff.isEmpty {
+                    // Notfy ParticipantDelegate
+                    self.delegates.notify(label: { "participant.didUpdateAttributes: \(String(describing: attributesDiff))" }) {
+                        $0.participant?(self, didUpdateAttributes: attributesDiff)
+                    }
+                    // Notify RoomDelegate
+                    room.delegates.notify(label: { "room.didUpdateAttributes: \(String(describing: attributesDiff))" }) {
+                        $0.room?(room, participant: self, didUpdateAttributes: attributesDiff)
+                    }
                 }
             }
 
             if newState.connectionQuality != oldState.connectionQuality {
-
                 self.delegates.notify(label: { "participant.didUpdate connectionQuality: \(self.connectionQuality)" }) {
-                    $0.participant?(self, didUpdate: self.connectionQuality)
+                    $0.participant?(self, didUpdateConnectionQuality: self.connectionQuality)
                 }
-                self.room.delegates.notify(label: { "room.didUpdate connectionQuality: \(self.connectionQuality)" }) {
-                    $0.room?(self.room, participant: self, didUpdate: self.connectionQuality)
+                room.delegates.notify(label: { "room.didUpdate connectionQuality: \(self.connectionQuality)" }) {
+                    $0.room?(room, participant: self, didUpdateConnectionQuality: self.connectionQuality)
                 }
             }
 
@@ -155,37 +182,46 @@ public class Participant: NSObject, ObservableObject, Loggable {
             Task.detached { @MainActor in
                 // Notify Participant
                 self.objectWillChange.send()
-                // Notify Room
-                self.room.objectWillChange.send()
+                if let room = self._room {
+                    // Notify Room
+                    room.objectWillChange.send()
+                }
             }
         }
     }
 
-    @discardableResult
-    internal func cleanUp(notify _notify: Bool = true) -> Promise<Void> {
+    func cleanUp(notify _notify: Bool = true) async {
+        await unpublishAll(notify: _notify)
 
-        unpublishAll(notify: _notify).then(on: queue) {
-            // reset state
-            self._state.mutate { $0 = State(sid: $0.sid, identity: $0.identity, name: $0.name) }
+        if let self = self as? RemoteParticipant, let room = self._room {
+            // Call async version of notify to wait delegates before resetting state
+            await room.delegates.notifyAsync {
+                $0.room?(room, participantDidDisconnect: self)
+            }
         }
+
+        // Reset state
+        _state.mutate { $0 = State() }
     }
 
-    internal func unpublishAll(notify _notify: Bool = true) -> Promise<Void> {
+    func unpublishAll(notify _: Bool = true) async {
         fatalError("Unimplemented")
     }
 
-    internal func addTrack(publication: TrackPublication) {
-        _state.mutate { $0.tracks[publication.sid] = publication }
+    func add(publication: TrackPublication) {
+        _state.mutate { $0.trackPublications[publication.sid] = publication }
         publication.track?._state.mutate { $0.sid = publication.sid }
     }
 
-    internal func updateFromInfo(info: Livekit_ParticipantInfo) {
-
+    func set(info: Livekit_ParticipantInfo, connectionState _: ConnectionState) {
         _state.mutate {
-            $0.identity = info.identity
+            $0.sid = Sid(from: info.sid)
+            $0.identity = Identity(from: info.identity)
             $0.name = info.name
             $0.metadata = info.metadata
             $0.joinedAt = Date(timeIntervalSince1970: TimeInterval(info.joinedAt))
+            $0.kind = info.kind.toLKType()
+            $0.attributes = info.attributes
         }
 
         self.info = info
@@ -193,9 +229,8 @@ public class Participant: NSObject, ObservableObject, Loggable {
     }
 
     @discardableResult
-    internal func set(permissions newValue: ParticipantPermissions) -> Bool {
-
-        guard self.permissions != newValue else {
+    func set(permissions newValue: ParticipantPermissions) -> Bool {
+        guard permissions != newValue else {
             // no change
             return false
         }
@@ -208,22 +243,21 @@ public class Participant: NSObject, ObservableObject, Loggable {
 
 // MARK: - Simplified API
 
-extension Participant {
-
-    public func isCameraEnabled() -> Bool {
-        !(getTrackPublication(source: .camera)?.muted ?? true)
+public extension Participant {
+    func isCameraEnabled() -> Bool {
+        !(getTrackPublication(source: .camera)?.isMuted ?? true)
     }
 
-    public func isMicrophoneEnabled() -> Bool {
-        !(getTrackPublication(source: .microphone)?.muted ?? true)
+    func isMicrophoneEnabled() -> Bool {
+        !(getTrackPublication(source: .microphone)?.isMuted ?? true)
     }
 
-    public func isScreenShareEnabled() -> Bool {
-        !(getTrackPublication(source: .screenShareVideo)?.muted ?? true)
+    func isScreenShareEnabled() -> Bool {
+        !(getTrackPublication(source: .screenShareVideo)?.isMuted ?? true)
     }
 
     internal func getTrackPublication(name: String) -> TrackPublication? {
-        _state.tracks.values.first(where: { $0.name == name })
+        _state.trackPublications.values.first(where: { $0.name == name })
     }
 
     /// find the first publication matching `source` or any compatible.
@@ -231,11 +265,11 @@ extension Participant {
         // if source is unknown return nil
         guard source != .unknown else { return nil }
         // try to find a Publication with matching source
-        if let result = _state.tracks.values.first(where: { $0.source == source }) {
+        if let result = _state.trackPublications.values.first(where: { $0.source == source }) {
             return result
         }
         // try to find a compatible Publication
-        if let result = _state.tracks.values.filter({ $0.source == .unknown }).first(where: {
+        if let result = _state.trackPublications.values.filter({ $0.source == .unknown }).first(where: {
             (source == .microphone && $0.kind == .audio) ||
                 (source == .camera && $0.kind == .video && $0.name != Track.screenShareVideoName) ||
                 (source == .screenShareVideo && $0.kind == .video && $0.name == Track.screenShareVideoName) ||
@@ -245,5 +279,18 @@ extension Participant {
         }
 
         return nil
+    }
+}
+
+// MARK: - Private helpers
+
+extension Participant {
+    func requireRoom() throws -> Room {
+        guard let room = _room else {
+            log("Room is nil", .error)
+            throw LiveKitError(.invalidState, message: "Room is nil")
+        }
+
+        return room
     }
 }

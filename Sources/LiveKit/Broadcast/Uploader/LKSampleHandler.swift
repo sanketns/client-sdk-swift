@@ -1,31 +1,38 @@
-//
-//  SampleHandler.swift
-//  Broadcast Extension
-//
-//  Created by Alex-Dan Bumbu on 04.06.2021.
-//
+/*
+ * Copyright 2024 LiveKit
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 #if os(iOS)
-
-import Promises
-import OSLog
-import Logging
 
 #if canImport(ReplayKit)
 import ReplayKit
 #endif
 
-open class LKSampleHandler: RPBroadcastSampleHandler {
+import LKObjCHelpers
 
+@available(macCatalyst 13.1, *)
+open class LKSampleHandler: RPBroadcastSampleHandler {
     private var clientConnection: BroadcastUploadSocketConnection?
     private var uploader: SampleUploader?
 
     public var appGroupIdentifier: String? {
-        return Bundle.main.infoDictionary?[BroadcastScreenCapturer.kAppGroupIdentifierKey] as? String
+        Bundle.main.infoDictionary?[BroadcastScreenCapturer.kAppGroupIdentifierKey] as? String
     }
 
     public var socketFilePath: String {
-        guard let appGroupIdentifier = appGroupIdentifier,
+        guard let appGroupIdentifier,
               let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier)
         else {
             return ""
@@ -34,21 +41,21 @@ open class LKSampleHandler: RPBroadcastSampleHandler {
         return sharedContainer.appendingPathComponent(BroadcastScreenCapturer.kRTCScreensharingSocketFD).path
     }
 
-    public override init() {
+    override public init() {
         super.init()
 
-        if let connection = BroadcastUploadSocketConnection(filePath: self.socketFilePath) {
-            self.clientConnection = connection
-            self.setupConnection()
+        if let connection = BroadcastUploadSocketConnection(filePath: socketFilePath) {
+            clientConnection = connection
+            setupConnection()
 
-            self.uploader = SampleUploader(connection: connection)
+            uploader = SampleUploader(connection: connection)
         }
     }
 
-    override public func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
+    override public func broadcastStarted(withSetupInfo _: [String: NSObject]?) {
         // User has requested to start the broadcast. Setup info from the UI extension can be supplied but optional.d
         DarwinNotificationCenter.shared.postNotification(.broadcastStarted)
-        self.openConnection()
+        openConnection()
     }
 
     override public func broadcastPaused() {
@@ -74,18 +81,36 @@ open class LKSampleHandler: RPBroadcastSampleHandler {
         }
     }
 
+    /// Override point to change the behavior when the socket connection has closed.
+    /// The default behavior is to pass errors through, and otherwise show nothing to the user.
+    ///
+    /// You should call `finishBroadcastWithError` in your implementation, but you can
+    /// add custom logging or present a custom error to the user instead.
+    ///
+    /// To present a custom error message:
+    ///   ```
+    ///   self.finishBroadcastWithError(NSError(
+    ///     domain: RPRecordingErrorDomain,
+    ///     code: 10001,
+    ///     userInfo: [NSLocalizedDescriptionKey: "My Custom Error Message"]
+    ///   ))
+    ///   ```
+    open func connectionDidClose(error: Error?) {
+        if let error {
+            finishBroadcastWithError(error)
+        } else {
+            LKObjCHelpers.finishBroadcastWithoutError(self)
+        }
+    }
+
     private func setupConnection() {
         clientConnection?.didClose = { [weak self] error in
             logger.log(level: .debug, "client connection did close \(String(describing: error))")
-
-            if let error = error {
-                self?.finishBroadcastWithError(error)
-            } else {
-                // the displayed failure message is more user friendly when using NSError instead of Error
-                let LKScreenSharingStopped = 10001
-                let customError = NSError(domain: RPRecordingErrorDomain, code: LKScreenSharingStopped, userInfo: [NSLocalizedDescriptionKey: "Screen sharing stopped"])
-                self?.finishBroadcastWithError(customError)
+            guard let self else {
+                return
             }
+
+            self.connectionDidClose(error: error)
         }
     }
 

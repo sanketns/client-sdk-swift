@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,17 +17,40 @@
 @testable import LiveKit
 import XCTest
 
-//
-// For testing state-less functions
-//
 class FunctionTests: XCTestCase {
-
     func testRangeMerge() async throws {
-        let range1 = 10...20
-        let range2 = 5...15
+        let range1 = 10 ... 20
+        let range2 = 5 ... 15
 
         let merged = merge(range: range1, with: range2)
         print("merged: \(merged)")
-        XCTAssert(merged == 5...20)
+        XCTAssert(merged == 5 ... 20)
+    }
+
+    func testAttributesUpdated() {
+        let oldValues: [String: String] = ["a": "value", "b": "initial", "c": "value"]
+        let newValues: [String: String] = ["a": "value", "b": "updated", "c": "value"]
+
+        let diff = computeAttributesDiff(oldValues: oldValues, newValues: newValues)
+        XCTAssertEqual(diff.count, 1)
+        XCTAssertEqual(diff["b"], "updated")
+    }
+
+    func testAttributesNew() {
+        let newValues: [String: String] = ["a": "value", "b": "value", "c": "value"]
+        let oldValues: [String: String] = ["a": "value", "b": "value"]
+
+        let diff = computeAttributesDiff(oldValues: oldValues, newValues: newValues)
+        XCTAssertEqual(diff.count, 1)
+        XCTAssertEqual(diff["c"], "value")
+    }
+
+    func testAttributesRemoved() {
+        let newValues: [String: String] = ["a": "value", "b": "value"]
+        let oldValues: [String: String] = ["a": "value", "b": "value", "c": "value"]
+
+        let diff = computeAttributesDiff(oldValues: oldValues, newValues: newValues)
+        XCTAssertEqual(diff.count, 1)
+        XCTAssertEqual(diff["c"], "")
     }
 }
