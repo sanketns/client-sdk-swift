@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,186 +14,173 @@
  * limitations under the License.
  */
 
-import Foundation
-import WebRTC
-import Promises
+#if swift(>=5.9)
+internal import LiveKitWebRTC
+#else
+@_implementationOnly import LiveKitWebRTC
+#endif
 
 @objc
 public class RemoteParticipant: Participant {
-
-    internal init(sid: Sid,
-                  info: Livekit_ParticipantInfo?,
-                  room: Room) {
-
-        super.init(sid: sid,
-                   identity: info?.identity ?? "",
-                   name: info?.name ?? "",
-                   room: room)
-
-        if let info = info {
-            updateFromInfo(info: info)
-        }
+    init(info: Livekit_ParticipantInfo, room: Room, connectionState: ConnectionState) {
+        super.init(room: room, sid: Participant.Sid(from: info.sid), identity: Participant.Identity(from: info.identity))
+        set(info: info, connectionState: connectionState)
     }
 
-    internal func getTrackPublication(sid: Sid) -> RemoteTrackPublication? {
-        _state.tracks[sid] as? RemoteTrackPublication
-    }
+    override func set(info: Livekit_ParticipantInfo, connectionState: ConnectionState) {
+        super.set(info: info, connectionState: connectionState)
 
-    override func updateFromInfo(info: Livekit_ParticipantInfo) {
-
-        super.updateFromInfo(info: info)
-
-        var validTrackPublications = [String: RemoteTrackPublication]()
-        var newTrackPublications = [String: RemoteTrackPublication]()
+        var validTrackPublications = [Track.Sid: RemoteTrackPublication]()
+        var newTrackPublications = [Track.Sid: RemoteTrackPublication]()
 
         for trackInfo in info.tracks {
-            var publication = getTrackPublication(sid: trackInfo.sid)
+            let trackSid = Track.Sid(from: trackInfo.sid)
+            var publication = _state.trackPublications[trackSid] as? RemoteTrackPublication
             if publication == nil {
                 publication = RemoteTrackPublication(info: trackInfo, participant: self)
-                newTrackPublications[trackInfo.sid] = publication
-                addTrack(publication: publication!)
+                newTrackPublications[trackSid] = publication
+                add(publication: publication!)
             } else {
                 publication!.updateFromInfo(info: trackInfo)
             }
-            validTrackPublications[trackInfo.sid] = publication!
+            validTrackPublications[trackSid] = publication!
         }
 
-        room.engine.executeIfConnected { [weak self] in
-            guard let self = self else { return }
+        guard let room = _room else {
+            log("_room is nil", .error)
+            return
+        }
 
+        if case .connected = connectionState {
             for publication in newTrackPublications.values {
-
-                self.delegates.notify(label: { "participant.didPublish \(publication)" }) {
-                    $0.participant?(self, didPublish: publication)
+                delegates.notify(label: { "participant.didPublish \(publication)" }) {
+                    $0.participant?(self, didPublishTrack: publication)
                 }
-                self.room.delegates.notify(label: { "room.didPublish \(publication)" }) {
-                    $0.room?(self.room, participant: self, didPublish: publication)
+                room.delegates.notify(label: { "room.didPublish \(publication)" }) {
+                    $0.room?(room, participant: self, didPublishTrack: publication)
                 }
             }
         }
 
-        let unpublishPromises = _state.tracks.values
+        let unpublishRemoteTrackPublications = _state.trackPublications.values
             .filter { validTrackPublications[$0.sid] == nil }
             .compactMap { $0 as? RemoteTrackPublication }
-            .map { unpublish(publication: $0) }
 
-        // TODO: Return a promise
-        unpublishPromises.all(on: queue).catch(on: queue) { error in
-            self.log("Failed to unpublish with error: \(error)")
+        for unpublishRemoteTrackPublication in unpublishRemoteTrackPublications {
+            Task.detached {
+                do {
+                    try await self.unpublish(publication: unpublishRemoteTrackPublication)
+                } catch {
+                    self.log("Failed to unpublish with error: \(error)")
+                }
+            }
         }
     }
 
-    internal func addSubscribedMediaTrack(rtcTrack: RTCMediaStreamTrack,
-                                          rtpReceiver: RTCRtpReceiver,
-                                          sid: Sid) -> Promise<Void> {
-
+    func addSubscribedMediaTrack(rtcTrack: LKRTCMediaStreamTrack, rtpReceiver: LKRTCRtpReceiver, trackSid: Track.Sid) async throws {
+        let room = try requireRoom()
         let track: Track
 
-        guard let publication = getTrackPublication(sid: sid) else {
-            log("Could not subscribe to mediaTrack \(sid), unable to locate track publication. existing sids: (\(_state.tracks.keys.joined(separator: ", ")))", .error)
-            let error = TrackError.state(message: "Could not find published track with sid: \(sid)")
-            delegates.notify(label: { "participant.didFailToSubscribe trackSid: \(sid)" }) {
-                $0.participant?(self, didFailToSubscribe: sid, error: error)
+        guard let publication = trackPublications[trackSid] as? RemoteTrackPublication else {
+            log("Could not subscribe to mediaTrack \(trackSid), unable to locate track publication. existing sids: (\(_state.trackPublications.keys.map { String(describing: $0) }.joined(separator: ", ")))", .error)
+            let error = LiveKitError(.invalidState, message: "Could not find published track with sid: \(trackSid)")
+            delegates.notify(label: { "participant.didFailToSubscribe trackSid: \(trackSid)" }) {
+                $0.participant?(self, didFailToSubscribeTrackWithSid: trackSid, error: error)
             }
-            room.delegates.notify(label: { "room.didFailToSubscribe trackSid: \(sid)" }) {
-                $0.room?(self.room, participant: self, didFailToSubscribe: sid, error: error)
+            room.delegates.notify(label: { "room.didFailToSubscribe trackSid: \(trackSid)" }) {
+                $0.room?(room, participant: self, didFailToSubscribeTrackWithSid: trackSid, error: error)
             }
-            return Promise(error)
+            throw error
         }
 
         switch rtcTrack.kind {
         case "audio":
             track = RemoteAudioTrack(name: publication.name,
                                      source: publication.source,
-                                     track: rtcTrack)
+                                     track: rtcTrack,
+                                     reportStatistics: room._state.roomOptions.reportRemoteTrackStatistics)
         case "video":
             track = RemoteVideoTrack(name: publication.name,
                                      source: publication.source,
-                                     track: rtcTrack)
+                                     track: rtcTrack,
+                                     reportStatistics: room._state.roomOptions.reportRemoteTrackStatistics)
         default:
-            let error = TrackError.type(message: "Unsupported type: \(rtcTrack.kind.description)")
-            delegates.notify(label: { "participant.didFailToSubscribe trackSid: \(sid)" }) {
-                $0.participant?(self, didFailToSubscribe: sid, error: error)
+            let error = LiveKitError(.invalidState, message: "Unsupported type: \(rtcTrack.kind.description)")
+            delegates.notify(label: { "participant.didFailToSubscribe trackSid: \(trackSid)" }) {
+                $0.participant?(self, didFailToSubscribeTrackWithSid: trackSid, error: error)
             }
-            room.delegates.notify(label: { "room.didFailToSubscribe trackSid: \(sid)" }) {
-                $0.room?(self.room, participant: self, didFailToSubscribe: sid, error: error)
+            room.delegates.notify(label: { "room.didFailToSubscribe trackSid: \(trackSid)" }) {
+                $0.room?(room, participant: self, didFailToSubscribeTrackWithSid: trackSid, error: error)
             }
-            return Promise(error)
+            throw error
         }
 
-        publication.set(track: track)
+        await publication.set(track: track)
         publication.set(subscriptionAllowed: true)
-        track._state.mutate { $0.sid = publication.sid }
 
-        assert(room.engine.subscriber != nil, "Subscriber is nil")
-        if let transport = room.engine.subscriber {
-            track.set(transport: transport, rtpReceiver: rtpReceiver)
+        if let transport = room._state.subscriber {
+            await track.set(transport: transport, rtpReceiver: rtpReceiver)
+        } else {
+            log("Subscriber is nil", .error)
         }
 
-        addTrack(publication: publication)
+        add(publication: publication)
 
-        return track.start().then(on: queue) { _ -> Void in
-            self.delegates.notify(label: { "participant.didSubscribe \(publication)" }) {
-                $0.participant?(self, didSubscribe: publication, track: track)
-            }
-            self.room.delegates.notify(label: { "room.didSubscribe \(publication)" }) {
-                $0.room?(self.room, participant: self, didSubscribe: publication, track: track)
+        try await track.start()
+
+        delegates.notify(label: { "participant.didSubscribe \(publication)" }) {
+            $0.participant?(self, didSubscribeTrack: publication)
+        }
+        room.delegates.notify(label: { "room.didSubscribe \(publication)" }) {
+            $0.room?(room, participant: self, didSubscribeTrack: publication)
+        }
+    }
+
+    override public func unpublishAll(notify _notify: Bool = true) async {
+        // Build a list of Publications
+        let publications = _state.trackPublications.values.compactMap { $0 as? RemoteTrackPublication }
+        for publication in publications {
+            do {
+                try await unpublish(publication: publication, notify: _notify)
+            } catch {
+                log("Failed to unpublish track \(publication.sid) with error \(error)", .error)
             }
         }
     }
 
-    internal override func cleanUp(notify _notify: Bool = true) -> Promise<Void> {
-        super.cleanUp(notify: _notify).then(on: queue) {
-            self.room.delegates.notify(label: { "room.participantDidLeave" }) {
-                $0.room?(self.room, participantDidLeave: self)
-            }
-        }
-    }
+    func unpublish(publication: RemoteTrackPublication, notify _notify: Bool = true) async throws {
+        let room = try requireRoom()
 
-    public override func unpublishAll(notify _notify: Bool = true) -> Promise<Void> {
-        // build a list of promises
-        let promises = _state.tracks.values.compactMap { $0 as? RemoteTrackPublication }
-            .map { unpublish(publication: $0, notify: _notify) }
-        // combine promises to wait all to complete
-        return promises.all(on: queue)
-    }
-
-    internal func unpublish(publication: RemoteTrackPublication, notify _notify: Bool = true) -> Promise<Void> {
-
-        func notifyUnpublish() -> Promise<Void> {
-
-            Promise<Void>(on: queue) { [weak self] in
-                guard let self = self, _notify else { return }
-                // notify unpublish
-                self.delegates.notify(label: { "participant.didUnpublish \(publication)" }) {
-                    $0.participant?(self, didUnpublish: publication)
-                }
-                self.room.delegates.notify(label: { "room.didUnpublish \(publication)" }) {
-                    $0.room?(self.room, participant: self, didUnpublish: publication)
-                }
-            }
-        }
-
-        // remove the publication
-        _state.mutate { $0.tracks.removeValue(forKey: publication.sid) }
-
-        // continue if the publication has a track
-        guard let track = publication.track else {
-            // if track is nil, only notify unpublish
-            return notifyUnpublish()
-        }
-
-        return track.stop().then(on: queue) { _ -> Void in
+        func _notifyUnpublish() async {
             guard _notify else { return }
-            // notify unsubscribe
-            self.delegates.notify(label: { "participant.didUnsubscribe \(publication)" }) {
-                $0.participant?(self, didUnsubscribe: publication, track: track)
+            delegates.notify(label: { "participant.didUnpublish \(publication)" }) {
+                $0.participant?(self, didUnpublishTrack: publication)
             }
-            self.room.delegates.notify(label: { "room.didUnsubscribe \(publication)" }) {
-                $0.room?(self.room, participant: self, didUnsubscribe: publication, track: track)
+            room.delegates.notify(label: { "room.didUnpublish \(publication)" }) {
+                $0.room?(room, participant: self, didUnpublishTrack: publication)
             }
-        }.then(on: queue) {
-            notifyUnpublish()
         }
+
+        // Remove the publication
+        _state.mutate { $0.trackPublications.removeValue(forKey: publication.sid) }
+
+        // Continue if the publication has a track
+        guard let track = publication.track else {
+            return await _notifyUnpublish()
+        }
+
+        try await track.stop()
+
+        if _notify {
+            // Notify unsubscribe
+            delegates.notify(label: { "participant.didUnsubscribe \(publication)" }) {
+                $0.participant?(self, didUnsubscribeTrack: publication)
+            }
+            room.delegates.notify(label: { "room.didUnsubscribe \(publication)" }) {
+                $0.room?(room, participant: self, didUnsubscribeTrack: publication)
+            }
+        }
+
+        await _notifyUnpublish()
     }
 }

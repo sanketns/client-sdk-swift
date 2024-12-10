@@ -1,5 +1,5 @@
-// swift-tools-version:5.3
-// The swift-tools-version declares the minimum version of Swift required to build this package.
+// swift-tools-version:5.7
+// (Xcode14.0+)
 
 import PackageDescription
 
@@ -7,40 +7,58 @@ let package = Package(
     name: "LiveKit",
     platforms: [
         .iOS(.v13),
-        .macOS(.v10_15)
+        .macOS(.v10_15),
+        .macCatalyst(.v14),
     ],
     products: [
-        // Products define the executables and libraries a package produces, and make them visible to other packages.
         .library(
             name: "LiveKit",
             targets: ["LiveKit"]
-        )
+        ),
     ],
     dependencies: [
-        .package(name: "WebRTC", url: "https://github.com/webrtc-sdk/Specs.git", .exact("104.5112.17")),
-        .package(name: "SwiftProtobuf", url: "https://github.com/apple/swift-protobuf.git", .upToNextMajor(from: "1.21.0")),
-        .package(name: "Promises", url: "https://github.com/google/promises.git", .upToNextMajor(from: "2.2.0")),
-        .package(url: "https://github.com/apple/swift-log.git", .upToNextMajor(from: "1.5.2"))
+        // LK-Prefixed Dynamic WebRTC XCFramework
+        .package(url: "https://github.com/livekit/webrtc-xcframework.git", exact: "125.6422.11"),
+        .package(url: "https://github.com/apple/swift-protobuf.git", from: "1.26.0"),
+        .package(url: "https://github.com/apple/swift-log.git", from: "1.5.4"),
+        // Only used for DocC generation
+        .package(url: "https://github.com/apple/swift-docc-plugin.git", from: "1.3.0"),
+        // Only used for Testing
+        .package(url: "https://github.com/vapor/jwt-kit.git", from: "4.13.4"),
     ],
     targets: [
-        .systemLibrary(name: "CHeaders"),
+        .target(
+            name: "LKObjCHelpers",
+            publicHeadersPath: "include"
+        ),
         .target(
             name: "LiveKit",
             dependencies: [
-                .target(name: "CHeaders"),
-                "WebRTC", "SwiftProtobuf", "Promises",
+                .product(name: "LiveKitWebRTC", package: "webrtc-xcframework"),
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
                 .product(name: "Logging", package: "swift-log"),
+                "LKObjCHelpers",
             ],
-            path: "Sources",
-            swiftSettings: [
-                // Compiler flags used to completely remove code for specific features to isolate issues.
-                // Not defining the flag will turn off the feature.
-                .define("LK_USE_LIVEKIT_WEBRTC_BUILD")
+            resources: [
+                .process("PrivacyInfo.xcprivacy"),
             ]
         ),
         .testTarget(
             name: "LiveKitTests",
-            dependencies: ["LiveKit"]
-        )
+            dependencies: [
+                "LiveKit",
+                .product(name: "JWTKit", package: "jwt-kit"),
+            ]
+        ),
+        .testTarget(
+            name: "LiveKitTestsObjC",
+            dependencies: [
+                "LiveKit",
+                .product(name: "JWTKit", package: "jwt-kit"),
+            ]
+        ),
+    ],
+    swiftLanguageVersions: [
+        .v5,
     ]
 )

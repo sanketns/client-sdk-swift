@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,7 @@
 
 import Foundation
 
-internal extension DispatchQueue {
-
-    static let webRTC = DispatchQueue(label: "LiveKitSDK.webRTC", qos: .default)
+public extension DispatchQueue {
+    // The queue which SDK uses to invoke WebRTC methods
+    static let liveKitWebRTC = DispatchQueue(label: "LiveKitSDK.webRTC", qos: .default)
 }

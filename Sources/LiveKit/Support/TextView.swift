@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,15 +22,15 @@ import UIKit
 import AppKit
 #endif
 
-internal class TextView: NativeView {
-
-    #if os(iOS)
+class TextView: NativeView {
+    #if os(iOS) || os(visionOS) || os(tvOS)
     private class DebugUILabel: UILabel {
-        override func drawText(in rect: CGRect) {
+        override func drawText(in _: CGRect) {
             let textRect = super.textRect(forBounds: bounds, limitedToNumberOfLines: numberOfLines)
             super.drawText(in: textRect)
         }
     }
+
     private let _textView: DebugUILabel
     #elseif os(macOS)
     private let _textView: NSTextField
@@ -38,14 +38,14 @@ internal class TextView: NativeView {
 
     var text: String? {
         get {
-            #if os(iOS)
+            #if os(iOS) || os(visionOS) || os(tvOS)
             _textView.text
             #elseif os(macOS)
             _textView.stringValue
             #endif
         }
         set {
-            #if os(iOS)
+            #if os(iOS) || os(visionOS) || os(tvOS)
             _textView.text = newValue
             #elseif os(macOS)
             _textView.stringValue = newValue ?? ""
@@ -54,9 +54,8 @@ internal class TextView: NativeView {
     }
 
     override init(frame: CGRect) {
-
-        #if os(iOS)
-        _textView  = DebugUILabel(frame: .zero)
+        #if os(iOS) || os(visionOS) || os(tvOS)
+        _textView = DebugUILabel(frame: .zero)
         _textView.numberOfLines = 0
         _textView.adjustsFontSizeToFitWidth = false
         _textView.lineBreakMode = .byWordWrapping
@@ -78,7 +77,8 @@ internal class TextView: NativeView {
         addSubview(_textView)
     }
 
-    required init?(coder: NSCoder) {
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 

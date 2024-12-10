@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +14,17 @@
  * limitations under the License.
  */
 
-import Foundation
 import CoreImage
+import Foundation
 
 #if canImport(ReplayKit)
 import ReplayKit
 #endif
 
-extension CIImage {
-
+public extension CIImage {
     /// Convenience method to convert ``CIImage`` to ``CVPixelBuffer``
     /// since ``CIImage/pixelBuffer`` is not always available.
-    public func toPixelBuffer() -> CVPixelBuffer? {
+    func toPixelBuffer() -> CVPixelBuffer? {
         var pixelBuffer: CVPixelBuffer?
 
         // get current size
@@ -35,7 +34,7 @@ extension CIImage {
         let options = [
             kCVPixelBufferCGImageCompatibilityKey as String: true,
             kCVPixelBufferCGBitmapContextCompatibilityKey as String: true,
-            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any]
+            kCVPixelBufferIOSurfacePropertiesKey as String: [:] as [String: Any],
         ] as [String: Any]
 
         let status: CVReturn = CVPixelBufferCreate(kCFAllocatorDefault,
@@ -47,7 +46,7 @@ extension CIImage {
 
         let ciContext = CIContext()
 
-        if let pixelBuffer = pixelBuffer, status == kCVReturnSuccess {
+        if let pixelBuffer, status == kCVReturnSuccess {
             ciContext.render(self, to: pixelBuffer)
         }
 
@@ -55,13 +54,12 @@ extension CIImage {
     }
 }
 
-extension CGImage {
-
+public extension CGImage {
     /// Convenience method to convert ``CGImage`` to ``CVPixelBuffer``
-    public func toPixelBuffer(pixelFormatType: OSType = kCVPixelFormatType_32ARGB,
-                              colorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB(),
-                              alphaInfo: CGImageAlphaInfo = .noneSkipFirst) -> CVPixelBuffer? {
-
+    func toPixelBuffer(pixelFormatType: OSType = kCVPixelFormatType_32ARGB,
+                       colorSpace: CGColorSpace = CGColorSpaceCreateDeviceRGB(),
+                       alphaInfo: CGImageAlphaInfo = .noneSkipFirst) -> CVPixelBuffer?
+    {
         var maybePixelBuffer: CVPixelBuffer?
         let attrs = [kCVPixelBufferCGImageCompatibilityKey: kCFBooleanTrue,
                      kCVPixelBufferCGBitmapContextCompatibilityKey: kCFBooleanTrue]
@@ -100,11 +98,15 @@ extension CGImage {
 
 #if os(iOS)
 @available(iOS 12, *)
-extension RPSystemBroadcastPickerView {
-
+public extension RPSystemBroadcastPickerView {
     /// Convenience function to show broadcast extension picker
-    public static func show(for preferredExtension: String? = nil,
-                            showsMicrophoneButton: Bool = true) {
+    static func show(for preferredExtension: String? = nil,
+                     showsMicrophoneButton: Bool = true)
+    {
+        if !Thread.current.isMainThread {
+            logger.log("Must be called on main thread", .error, type: RPSystemBroadcastPickerView.self)
+        }
+
         let view = RPSystemBroadcastPickerView()
         view.preferredExtension = preferredExtension
         view.showsMicrophoneButton = showsMicrophoneButton

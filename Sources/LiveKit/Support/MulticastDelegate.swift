@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -15,7 +15,6 @@
  */
 
 import Foundation
-import Promises
 
 // Workaround for Swift-ObjC limitation around generics.
 public protocol MulticastDelegateProtocol {
@@ -29,72 +28,86 @@ public protocol MulticastDelegateProtocol {
 ///
 /// Uses `NSHashTable` internally to maintain a set of weak delegates.
 ///
-/// > Note: `NSHashTable` may not immediately deinit the un-referenced object, due to Apple's implementation, therefore `.count` is unreliable.
 public class MulticastDelegate<T>: NSObject, Loggable {
+    // MARK: - Public properties
 
-    internal let multicastQueue: DispatchQueue
-    private let set = NSHashTable<AnyObject>.weakObjects()
+    public var isDelegatesEmpty: Bool { countDelegates == 0 }
 
-    init(label: String = "livekit.multicast", qos: DispatchQoS = .default) {
-        self.multicastQueue = DispatchQueue(label: label, qos: qos, attributes: [])
+    public var isDelegatesNotEmpty: Bool { countDelegates != 0 }
+
+    /// `NSHashTable` may not immediately deinit the un-referenced object, due to Apple's implementation, therefore ``countDelegates`` may be unreliable.
+    public var countDelegates: Int {
+        _state.read { $0.delegates.allObjects.count }
+    }
+
+    public var allDelegates: [T] {
+        _state.read { $0.delegates.allObjects.compactMap { $0 as? T } }
+    }
+
+    // MARK: - Private properties
+
+    private struct State {
+        let delegates = NSHashTable<AnyObject>.weakObjects()
+    }
+
+    private let _queue: DispatchQueue
+
+    private let _state = StateSync(State())
+
+    init(label: String, qos: DispatchQoS = .default) {
+        _queue = DispatchQueue(label: "LiveKitSDK.Multicast.\(label)", qos: qos, attributes: [])
     }
 
     /// Add a single delegate.
     public func add(delegate: T) {
-
         guard let delegate = delegate as AnyObject? else {
             log("MulticastDelegate: delegate is not an AnyObject")
             return
         }
 
-        multicastQueue.sync { [weak self] in
-            guard let self = self else { return }
-            self.set.add(delegate)
-        }
+        _state.mutate { $0.delegates.add(delegate) }
     }
 
     /// Remove a single delegate.
     ///
     /// In most cases this is not required to be called explicitly since all delegates are weak.
     public func remove(delegate: T) {
-
         guard let delegate = delegate as AnyObject? else {
             log("MulticastDelegate: delegate is not an AnyObject")
             return
         }
 
-        multicastQueue.sync { [weak self] in
-            guard let self = self else { return }
-            self.set.remove(delegate)
-        }
+        _state.mutate { $0.delegates.remove(delegate) }
     }
 
     /// Remove all delegates.
     public func removeAllDelegates() {
-
-        multicastQueue.sync { [weak self] in
-            guard let self = self else { return }
-            self.set.removeAllObjects()
-        }
+        _state.mutate { $0.delegates.removeAllObjects() }
     }
 
     /// Notify delegates inside the queue.
-    /// Label is captured inside the queue for thread safety reasons.
-    internal func notify(label: (() -> String)? = nil, _ fnc: @escaping (T) -> Void) {
+    func notify(label _: (() -> String)? = nil, _ fnc: @escaping (T) -> Void) {
+        let delegates = _state.read { $0.delegates.allObjects.compactMap { $0 as? T } }
 
-        multicastQueue.async {
-
-            if let label = label {
-                self.log("[notify] \(label())", .debug)
-            }
-
-            for delegate in self.set.allObjects {
-                guard let delegate = delegate as? T else {
-                    self.log("MulticastDelegate: skipping notify for \(delegate), not a type of \(T.self)", .warning)
-                    continue
-                }
-
+        _queue.async {
+            for delegate in delegates {
                 fnc(delegate)
+            }
+        }
+    }
+
+    /// Awaitable version of notify
+    func notifyAsync(_ fnc: @escaping (T) -> Void) async {
+        // Read a copy of delegates
+        let delegates = _state.read { $0.delegates.allObjects.compactMap { $0 as? T } }
+
+        // Convert to async
+        await withCheckedContinuation { continuation in
+            _queue.async {
+                for delegate in delegates {
+                    fnc(delegate)
+                }
+                continuation.resume()
             }
         }
     }

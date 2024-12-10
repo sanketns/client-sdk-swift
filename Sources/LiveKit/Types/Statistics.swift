@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,8 @@ import Foundation
 
 /// Stats spec defined at https://www.w3.org/TR/webrtc-stats/
 
-public enum StatisticsType: String {
-    case codec = "codec"
+public enum StatisticsType: String, Sendable {
+    case codec
     case inboundRtp = "inbound-rtp"
     case outboundRtp = "outbound-rtp"
     case remoteInboundRtp = "remote-inbound-rtp"
@@ -28,362 +28,341 @@ public enum StatisticsType: String {
     case mediaPlayout = "media-playout"
     case peerConnection = "peer-connection"
     case dataChannel = "data-channel"
-    case transport = "transport"
+    case transport
     case candidatePair = "candidate-pair"
     case localCandidate = "local-candidate"
     case remoteCandidate = "remote-candidate"
-    case certificate = "certificate"
+    case certificate
 }
 
-public enum QualityLimitationReason: String {
-    case none = "none"
-    case cpu = "cpu"
-    case bandwidth = "bandwidth"
-    case other = "other"
+public enum QualityLimitationReason: String, Sendable {
+    case none
+    case cpu
+    case bandwidth
+    case other
 }
 
-public enum DtlsRole: String {
-    case client = "client"
-    case server = "server"
-    case unknown = "unknown"
+public enum DtlsRole: String, Sendable {
+    case client
+    case server
+    case unknown
 }
 
-public enum IceCandidatePairState: String {
-    case frozen = "frozen"
-    case waiting = "waiting"
+public enum IceCandidatePairState: String, Sendable {
+    case frozen
+    case waiting
     case inProgress = "in-progress"
-    case failed = "failed"
-    case succeeded = "succeeded"
+    case failed
+    case succeeded
 }
 
-public enum DataChannelState: String {
-    case connecting = "connecting"
-    case open = "open"
-    case closing = "closing"
-    case closed = "closed"
+public enum DataChannelState: String, Sendable {
+    case connecting
+    case open
+    case closing
+    case closed
 }
 
-public enum IceRole: String {
-    case unknown = "unknown"
-    case controlling = "controlling"
-    case controlled = "controlled"
+public enum IceRole: String, Sendable {
+    case unknown
+    case controlling
+    case controlled
 }
 
-public enum DtlsTransportState: String {
-    case new = "new"
-    case connecting = "connecting"
-    case connected = "connected"
-    case closed = "closed"
-    case failed = "failed"
+public enum DtlsTransportState: String, Sendable {
+    case new
+    case connecting
+    case connected
+    case closed
+    case failed
 }
 
-public enum IceTransportState: String {
-    case new = "new"
-    case checking = "checking"
-    case connected = "connected"
-    case completed = "completed"
-    case disconnected = "disconnected"
-    case failed = "failed"
-    case closed = "closed"
+public enum IceTransportState: String, Sendable {
+    case new
+    case checking
+    case connected
+    case completed
+    case disconnected
+    case failed
+    case closed
 }
 
-public enum IceCandidateType: String {
-    case host = "host"
-    case srflx = "srflx"
-    case prflx = "prflx"
-    case relay = "relay"
+public enum IceCandidateType: String, Sendable {
+    case host
+    case srflx
+    case prflx
+    case relay
 }
 
-public enum IceServerTransportProtocol: String {
-    case udp = "udp"
-    case tcp = "tcp"
-    case tls = "tls"
+public enum IceServerTransportProtocol: String, Sendable {
+    case udp
+    case tcp
+    case tls
 }
 
-public enum IceTcpCandidateType: String {
-    case active = "active"
-    case passive = "passive"
-    case so = "so"
+public enum IceTcpCandidateType: String, Sendable {
+    case active
+    case passive
+    case so
 }
 
 // Base class
 @objc
 public class Statistics: NSObject, Identifiable {
-
     public let id: String
     public let type: StatisticsType
     public let timestamp: Double
-    public let rawValues: [String: NSObject]
 
     init?(id: String,
           type: StatisticsType,
-          timestamp: Double,
-          rawValues: [String: NSObject]) {
-
+          timestamp: Double)
+    {
         self.id = id
         self.type = type
         self.timestamp = timestamp
-        self.rawValues = rawValues
     }
 }
 
 // type: codec
 @objc
 public class CodecStatistics: Statistics {
-
-    public let payloadType: UInt
-    public let transportId: String
-    public let mimeType: String
-    public let clockRate: UInt
-    public let channels: UInt
-    public let sdpFmtpLine: String
+    public let payloadType: UInt?
+    public let transportId: String?
+    public let mimeType: String?
+    public let clockRate: UInt?
+    public let channels: UInt?
+    public let sdpFmtpLine: String?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.payloadType = rawValues.read("payloadType")
-        self.transportId = rawValues.read("transportId")
-        self.mimeType = rawValues.read("mimeType")
-        self.clockRate = rawValues.read("clockRate")
-        self.channels = rawValues.read("channels")
-        self.sdpFmtpLine = rawValues.read("sdpFmtpLine")
+          rawValues: [String: NSObject])
+    {
+        payloadType = rawValues.readOptional("payloadType")
+        transportId = rawValues.readOptional("transportId")
+        mimeType = rawValues.readOptional("mimeType")
+        clockRate = rawValues.readOptional("clockRate")
+        channels = rawValues.readOptional("channels")
+        sdpFmtpLine = rawValues.readOptional("sdpFmtpLine")
 
         super.init(id: id,
                    type: .codec,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 @objc
 public class MediaSourceStatistics: Statistics {
-
-    public let trackIdentifier: String
-    public let kind: String
+    public let trackIdentifier: String?
+    public let kind: String?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.trackIdentifier = rawValues.read("trackIdentifier")
-        self.kind = rawValues.read("kind")
+          rawValues: [String: NSObject])
+    {
+        trackIdentifier = rawValues.readOptional("trackIdentifier")
+        kind = rawValues.readOptional("kind")
 
         super.init(id: id,
                    type: .mediaSource,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 @objc
 public class RtpStreamStatistics: Statistics {
+    public let ssrc: UInt?
+    public let kind: String?
+    public let transportId: String?
+    public let codecId: String?
 
-    public let ssrc: UInt
-    public let kind: String
-    public let transportId: String
-    public let codecId: String
-
-    override init?(id: String,
-                   type: StatisticsType,
-                   timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.ssrc = rawValues.read("ssrc")
-        self.kind = rawValues.read("kind")
-        self.transportId = rawValues.read("transportId")
-        self.codecId = rawValues.read("codecId")
+    init?(id: String,
+          type: StatisticsType,
+          timestamp: Double,
+          rawValues: [String: NSObject])
+    {
+        ssrc = rawValues.readOptional("ssrc")
+        kind = rawValues.readOptional("kind")
+        transportId = rawValues.readOptional("transportId")
+        codecId = rawValues.readOptional("codecId")
 
         super.init(id: id,
                    type: type,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: media-playout
 @objc
 public class AudioPlayoutStatistics: Statistics {
-
-    public let kind: String
-    public let synthesizedSamplesDuration: Double
-    public let synthesizedSamplesEvents: UInt
-    public let totalSamplesDuration: Double
-    public let totalPlayoutDelay: Double
-    public let totalSamplesCount: UInt64
+    public let kind: String?
+    public let synthesizedSamplesDuration: Double?
+    public let synthesizedSamplesEvents: UInt?
+    public let totalSamplesDuration: Double?
+    public let totalPlayoutDelay: Double?
+    public let totalSamplesCount: UInt64?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.kind = rawValues.read("kind")
-        self.synthesizedSamplesDuration = rawValues.read("synthesizedSamplesDuration")
-        self.synthesizedSamplesEvents = rawValues.read("synthesizedSamplesEvents")
-        self.totalSamplesDuration = rawValues.read("totalSamplesDuration")
-        self.totalPlayoutDelay = rawValues.read("totalPlayoutDelay")
-        self.totalSamplesCount = rawValues.read("totalSamplesCount")
+          rawValues: [String: NSObject])
+    {
+        kind = rawValues.readOptional("kind")
+        synthesizedSamplesDuration = rawValues.readOptional("synthesizedSamplesDuration")
+        synthesizedSamplesEvents = rawValues.readOptional("synthesizedSamplesEvents")
+        totalSamplesDuration = rawValues.readOptional("totalSamplesDuration")
+        totalPlayoutDelay = rawValues.readOptional("totalPlayoutDelay")
+        totalSamplesCount = rawValues.readOptional("totalSamplesCount")
 
         super.init(id: id,
                    type: .mediaPlayout,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: peer-connection
 @objc
 public class PeerConnectionStatistics: Statistics {
-
-    public let dataChannelsOpened: UInt
-    public let dataChannelsClosed: UInt
+    public let dataChannelsOpened: UInt?
+    public let dataChannelsClosed: UInt?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.dataChannelsOpened = rawValues.read("dataChannelsOpened")
-        self.dataChannelsClosed = rawValues.read("dataChannelsClosed")
+          rawValues: [String: NSObject])
+    {
+        dataChannelsOpened = rawValues.readOptional("dataChannelsOpened")
+        dataChannelsClosed = rawValues.readOptional("dataChannelsClosed")
 
         super.init(id: id,
                    type: .peerConnection,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: data-channel
 @objc
 public class DataChannelStatistics: Statistics {
-
-    public let label: String
-    public let `protocol`: String
-    public let dataChannelIdentifier: UInt16
+    public let label: String?
+    public let `protocol`: String?
+    public let dataChannelIdentifier: UInt16?
     public let state: DataChannelState?
-    public let messagesSent: UInt
-    public let bytesSent: UInt64
-    public let messagesReceived: UInt
-    public let bytesReceived: UInt64
+    public let messagesSent: UInt?
+    public let bytesSent: UInt64?
+    public let messagesReceived: UInt?
+    public let bytesReceived: UInt64?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.label = rawValues.read("label")
-        self.protocol = rawValues.read("protocol")
-        self.dataChannelIdentifier = rawValues.read("dataChannelIdentifier")
-        self.state = DataChannelState(rawValue: rawValues.read("state"))
-        self.messagesSent = rawValues.read("messagesSent")
-        self.bytesSent = rawValues.read("bytesSent")
-        self.messagesReceived = rawValues.read("messagesReceived")
-        self.bytesReceived = rawValues.read("bytesReceived")
+          rawValues: [String: NSObject])
+    {
+        label = rawValues.readOptional("label")
+        `protocol` = rawValues.readOptional("protocol")
+        dataChannelIdentifier = rawValues.readOptional("dataChannelIdentifier")
+        state = DataChannelState(rawValue: rawValues.readNonOptional("state"))
+        messagesSent = rawValues.readOptional("messagesSent")
+        bytesSent = rawValues.readOptional("bytesSent")
+        messagesReceived = rawValues.readOptional("messagesReceived")
+        bytesReceived = rawValues.readOptional("bytesReceived")
 
         super.init(id: id,
                    type: .dataChannel,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: transport
 @objc
 public class TransportStatistics: Statistics {
-
-    public let packetsSent: UInt64
-    public let packetsReceived: UInt64
-    public let bytesSent: UInt64
-    public let bytesReceived: UInt64
+    public let packetsSent: UInt64?
+    public let packetsReceived: UInt64?
+    public let bytesSent: UInt64?
+    public let bytesReceived: UInt64?
     public let iceRole: IceRole?
-    public let iceLocalUsernameFragment: String
+    public let iceLocalUsernameFragment: String?
     public let dtlsState: DtlsTransportState?
     public let iceState: IceTransportState?
-    public let selectedCandidatePairId: String
-    public let localCertificateId: String
-    public let remoteCertificateId: String
-    public let tlsVersion: String
-    public let dtlsCipher: String
+    public let selectedCandidatePairId: String?
+    public let localCertificateId: String?
+    public let remoteCertificateId: String?
+    public let tlsVersion: String?
+    public let dtlsCipher: String?
     public let dtlsRole: DtlsRole?
-    public let srtpCipher: String
-    public let selectedCandidatePairChanges: UInt
+    public let srtpCipher: String?
+    public let selectedCandidatePairChanges: UInt?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.packetsSent = rawValues.read("packetsSent")
-        self.packetsReceived = rawValues.read("packetsReceived")
-        self.bytesSent = rawValues.read("bytesSent")
-        self.bytesReceived = rawValues.read("bytesReceived")
-        self.iceRole = IceRole(rawValue: rawValues.read("iceRole"))
-        self.iceLocalUsernameFragment = rawValues.read("iceLocalUsernameFragment")
-        self.dtlsState = DtlsTransportState(rawValue: rawValues.read("dtlsState"))
-        self.iceState = IceTransportState(rawValue: rawValues.read("iceState"))
-        self.selectedCandidatePairId = rawValues.read("selectedCandidatePairId")
-        self.localCertificateId = rawValues.read("localCertificateId")
-        self.remoteCertificateId = rawValues.read("remoteCertificateId")
-        self.tlsVersion = rawValues.read("tlsVersion")
-        self.dtlsCipher = rawValues.read("dtlsCipher")
-        self.dtlsRole = DtlsRole(rawValue: rawValues.read("dtlsRole"))
-        self.srtpCipher = rawValues.read("srtpCipher")
-        self.selectedCandidatePairChanges = rawValues.read("selectedCandidatePairChanges")
+          rawValues: [String: NSObject])
+    {
+        packetsSent = rawValues.readOptional("packetsSent")
+        packetsReceived = rawValues.readOptional("packetsReceived")
+        bytesSent = rawValues.readOptional("bytesSent")
+        bytesReceived = rawValues.readOptional("bytesReceived")
+        iceRole = IceRole(rawValue: rawValues.readNonOptional("iceRole"))
+        iceLocalUsernameFragment = rawValues.readOptional("iceLocalUsernameFragment")
+        dtlsState = DtlsTransportState(rawValue: rawValues.readNonOptional("dtlsState"))
+        iceState = IceTransportState(rawValue: rawValues.readNonOptional("iceState"))
+        selectedCandidatePairId = rawValues.readOptional("selectedCandidatePairId")
+        localCertificateId = rawValues.readOptional("localCertificateId")
+        remoteCertificateId = rawValues.readOptional("remoteCertificateId")
+        tlsVersion = rawValues.readOptional("tlsVersion")
+        dtlsCipher = rawValues.readOptional("dtlsCipher")
+        dtlsRole = DtlsRole(rawValue: rawValues.readNonOptional("dtlsRole"))
+        srtpCipher = rawValues.readOptional("srtpCipher")
+        selectedCandidatePairChanges = rawValues.readOptional("selectedCandidatePairChanges")
 
         super.init(id: id,
                    type: .transport,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: local-candidate, remote-candidate
 @objc
 public class IceCandidateStatistics: Statistics {
-
-    public let transportId: String
-    public let address: String
-    public let port: Int
-    public let `protocol`: String
+    public let transportId: String?
+    public let address: String?
+    public let port: Int?
+    public let `protocol`: String?
     public let candidateType: IceCandidateType?
-    public let priority: Int
-    public let url: String
+    public let priority: Int?
+    public let url: String?
     public let relayProtocol: IceServerTransportProtocol?
-    public let foundation: String
-    public let relatedAddress: String
-    public let relatedPort: Int
-    public let usernameFragment: String
+    public let foundation: String?
+    public let relatedAddress: String?
+    public let relatedPort: Int?
+    public let usernameFragment: String?
     public let tcpType: IceTcpCandidateType?
 
-    override init?(id: String,
-                   type: StatisticsType,
-                   timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.transportId = rawValues.read("transportId")
-        self.address = rawValues.read("address")
-        self.port = rawValues.read("port")
-        self.protocol = rawValues.read("protocol")
-        self.candidateType = IceCandidateType(rawValue: rawValues.read("candidateType"))
-        self.priority = rawValues.read("priority")
-        self.url = rawValues.read("url")
-        self.relayProtocol = IceServerTransportProtocol(rawValue: rawValues.read("relayProtocol"))
-        self.foundation = rawValues.read("foundation")
-        self.relatedAddress = rawValues.read("relatedAddress")
-        self.relatedPort = rawValues.read("relatedPort")
-        self.usernameFragment = rawValues.read("usernameFragment")
-        self.tcpType = IceTcpCandidateType(rawValue: rawValues.read("tcpType"))
+    init?(id: String,
+          type: StatisticsType,
+          timestamp: Double,
+          rawValues: [String: NSObject])
+    {
+        transportId = rawValues.readOptional("transportId")
+        address = rawValues.readOptional("address")
+        port = rawValues.readOptional("port")
+        `protocol` = rawValues.readOptional("protocol")
+        candidateType = IceCandidateType(rawValue: rawValues.readNonOptional("candidateType"))
+        priority = rawValues.readOptional("priority")
+        url = rawValues.readOptional("url")
+        relayProtocol = IceServerTransportProtocol(rawValue: rawValues.readNonOptional("relayProtocol"))
+        foundation = rawValues.readOptional("foundation")
+        relatedAddress = rawValues.readOptional("relatedAddress")
+        relatedPort = rawValues.readOptional("relatedPort")
+        usernameFragment = rawValues.readOptional("usernameFragment")
+        tcpType = IceTcpCandidateType(rawValue: rawValues.readNonOptional("tcpType"))
 
         super.init(id: id,
                    type: type,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 @objc
 public class LocalIceCandidateStatistics: IceCandidateStatistics {
-
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
+          rawValues: [String: NSObject])
+    {
         super.init(id: id,
                    type: .localCandidate,
                    timestamp: timestamp,
@@ -393,11 +372,10 @@ public class LocalIceCandidateStatistics: IceCandidateStatistics {
 
 @objc
 public class RemoteIceCandidateStatistics: IceCandidateStatistics {
-
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
+          rawValues: [String: NSObject])
+    {
         super.init(id: id,
                    type: .remoteCandidate,
                    timestamp: timestamp,
@@ -408,104 +386,99 @@ public class RemoteIceCandidateStatistics: IceCandidateStatistics {
 // type: candidate-pair
 @objc
 public class IceCandidatePairStatistics: Statistics {
-
-    public let transportId: String
-    public let localCandidateId: String
-    public let remoteCandidateId: String
+    public let transportId: String?
+    public let localCandidateId: String?
+    public let remoteCandidateId: String?
     public let state: IceCandidatePairState?
-    public let nominated: Bool
-    public let packetsSent: UInt64
-    public let packetsReceived: UInt64
-    public let bytesSent: UInt64
-    public let bytesReceived: UInt64
-    public let lastPacketSentTimestamp: Double
-    public let lastPacketReceivedTimestamp: Double
-    public let totalRoundTripTime: Double
-    public let currentRoundTripTime: Double
-    public let availableOutgoingBitrate: Double
-    public let availableIncomingBitrate: Double
-    public let requestsReceived: UInt64
-    public let requestsSent: UInt64
-    public let responsesReceived: UInt64
-    public let responsesSent: UInt64
-    public let consentRequestsSent: UInt64
-    public let packetsDiscardedOnSend: UInt
-    public let bytesDiscardedOnSend: UInt64
+    public let nominated: Bool?
+    public let packetsSent: UInt64?
+    public let packetsReceived: UInt64?
+    public let bytesSent: UInt64?
+    public let bytesReceived: UInt64?
+    public let lastPacketSentTimestamp: Double?
+    public let lastPacketReceivedTimestamp: Double?
+    public let totalRoundTripTime: Double?
+    public let currentRoundTripTime: Double?
+    public let availableOutgoingBitrate: Double?
+    public let availableIncomingBitrate: Double?
+    public let requestsReceived: UInt64?
+    public let requestsSent: UInt64?
+    public let responsesReceived: UInt64?
+    public let responsesSent: UInt64?
+    public let consentRequestsSent: UInt64?
+    public let packetsDiscardedOnSend: UInt?
+    public let bytesDiscardedOnSend: UInt64?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.transportId = rawValues.read("transportId")
-        self.localCandidateId = rawValues.read("localCandidateId")
-        self.remoteCandidateId = rawValues.read("remoteCandidateId")
-        self.state = IceCandidatePairState(rawValue: rawValues.read("state"))
-        self.nominated = rawValues.read("nominated")
-        self.packetsSent = rawValues.read("packetsSent")
-        self.packetsReceived = rawValues.read("packetsReceived")
-        self.bytesSent = rawValues.read("bytesSent")
-        self.bytesReceived = rawValues.read("bytesReceived")
-        self.lastPacketSentTimestamp = rawValues.read("lastPacketSentTimestamp")
-        self.lastPacketReceivedTimestamp = rawValues.read("lastPacketReceivedTimestamp")
-        self.totalRoundTripTime = rawValues.read("totalRoundTripTime")
-        self.currentRoundTripTime = rawValues.read("currentRoundTripTime")
-        self.availableOutgoingBitrate = rawValues.read("availableOutgoingBitrate")
-        self.availableIncomingBitrate = rawValues.read("availableIncomingBitrate")
-        self.requestsReceived = rawValues.read("requestsReceived")
-        self.requestsSent = rawValues.read("requestsSent")
-        self.responsesReceived = rawValues.read("responsesReceived")
-        self.responsesSent = rawValues.read("responsesSent")
-        self.consentRequestsSent = rawValues.read("consentRequestsSent")
-        self.packetsDiscardedOnSend = rawValues.read("packetsDiscardedOnSend")
-        self.bytesDiscardedOnSend = rawValues.read("bytesDiscardedOnSend")
+          rawValues: [String: NSObject])
+    {
+        transportId = rawValues.readOptional("transportId")
+        localCandidateId = rawValues.readOptional("localCandidateId")
+        remoteCandidateId = rawValues.readOptional("remoteCandidateId")
+        state = IceCandidatePairState(rawValue: rawValues.readNonOptional("state"))
+        nominated = rawValues.readOptional("nominated")
+        packetsSent = rawValues.readOptional("packetsSent")
+        packetsReceived = rawValues.readOptional("packetsReceived")
+        bytesSent = rawValues.readOptional("bytesSent")
+        bytesReceived = rawValues.readOptional("bytesReceived")
+        lastPacketSentTimestamp = rawValues.readOptional("lastPacketSentTimestamp")
+        lastPacketReceivedTimestamp = rawValues.readOptional("lastPacketReceivedTimestamp")
+        totalRoundTripTime = rawValues.readOptional("totalRoundTripTime")
+        currentRoundTripTime = rawValues.readOptional("currentRoundTripTime")
+        availableOutgoingBitrate = rawValues.readOptional("availableOutgoingBitrate")
+        availableIncomingBitrate = rawValues.readOptional("availableIncomingBitrate")
+        requestsReceived = rawValues.readOptional("requestsReceived")
+        requestsSent = rawValues.readOptional("requestsSent")
+        responsesReceived = rawValues.readOptional("responsesReceived")
+        responsesSent = rawValues.readOptional("responsesSent")
+        consentRequestsSent = rawValues.readOptional("consentRequestsSent")
+        packetsDiscardedOnSend = rawValues.readOptional("packetsDiscardedOnSend")
+        bytesDiscardedOnSend = rawValues.readOptional("bytesDiscardedOnSend")
 
         super.init(id: id,
                    type: .candidatePair,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 // type: certificate
 @objc
 public class CertificateStatistics: Statistics {
-
-    public let fingerprint: String
-    public let fingerprintAlgorithm: String
-    public let base64Certificate: String
-    public let issuerCertificateId: String
+    public let fingerprint: String?
+    public let fingerprintAlgorithm: String?
+    public let base64Certificate: String?
+    public let issuerCertificateId: String?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.fingerprint = rawValues.read("fingerprint")
-        self.fingerprintAlgorithm = rawValues.read("fingerprintAlgorithm")
-        self.base64Certificate = rawValues.read("base64Certificate")
-        self.issuerCertificateId = rawValues.read("issuerCertificateId")
+          rawValues: [String: NSObject])
+    {
+        fingerprint = rawValues.readOptional("fingerprint")
+        fingerprintAlgorithm = rawValues.readOptional("fingerprintAlgorithm")
+        base64Certificate = rawValues.readOptional("base64Certificate")
+        issuerCertificateId = rawValues.readOptional("issuerCertificateId")
 
         super.init(id: id,
                    type: .certificate,
-                   timestamp: timestamp,
-                   rawValues: rawValues)
+                   timestamp: timestamp)
     }
 }
 
 @objc
 public class ReceivedRtpStreamStatistics: RtpStreamStatistics {
-
-    public let packetsReceived: UInt64
-    public let packetsLost: Int64
-    public let jitter: Double
+    public let packetsReceived: UInt64?
+    public let packetsLost: Int64?
+    public let jitter: Double?
 
     override init?(id: String,
                    type: StatisticsType,
                    timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.packetsReceived = rawValues.read("packetsReceived")
-        self.packetsLost = rawValues.read("packetsLost")
-        self.jitter = rawValues.read("jitter")
+                   rawValues: [String: NSObject])
+    {
+        packetsReceived = rawValues.readOptional("packetsReceived")
+        packetsLost = rawValues.readOptional("packetsLost")
+        jitter = rawValues.readOptional("jitter")
 
         super.init(id: id,
                    type: type,
@@ -516,17 +489,16 @@ public class ReceivedRtpStreamStatistics: RtpStreamStatistics {
 
 @objc
 public class SentRtpStreamStatistics: RtpStreamStatistics {
-
-    public let packetsSent: UInt64
-    public let bytesSent: UInt64
+    public let packetsSent: UInt64?
+    public let bytesSent: UInt64?
 
     override init?(id: String,
                    type: StatisticsType,
                    timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.packetsSent = rawValues.read("packetsSent")
-        self.bytesSent = rawValues.read("bytesSent")
+                   rawValues: [String: NSObject])
+    {
+        packetsSent = rawValues.readOptional("packetsSent")
+        bytesSent = rawValues.readOptional("bytesSent")
 
         super.init(id: id,
                    type: type,
@@ -538,117 +510,117 @@ public class SentRtpStreamStatistics: RtpStreamStatistics {
 // type: inbound-rtp
 @objc
 public class InboundRtpStreamStatistics: ReceivedRtpStreamStatistics {
-
-    public let trackIdentifier: String
+    public let trackIdentifier: String?
     // let kind: String
-    public let mid: String
-    public let remoteId: String
-    public let framesDecoded: UInt
-    public let keyFramesDecoded: UInt
-    public let framesRendered: UInt
-    public let framesDropped: UInt
-    public let frameWidth: UInt
-    public let frameHeight: UInt
-    public let framesPerSecond: Double
-    public let qpSum: UInt64
-    public let totalDecodeTime: Double
-    public let totalInterFrameDelay: Double
-    public let totalSquaredInterFrameDelay: Double
-    public let pauseCount: UInt
-    public let totalPausesDuration: Double
-    public let freezeCount: UInt
-    public let totalFreezesDuration: Double
-    public let lastPacketReceivedTimestamp: Double
-    public let headerBytesReceived: UInt64
-    public let packetsDiscarded: UInt64
-    public let fecPacketsReceived: UInt64
-    public let fecPacketsDiscarded: UInt64
-    public let bytesReceived: UInt64
-    public let nackCount: UInt
-    public let firCount: UInt
-    public let pliCount: UInt
-    public let totalProcessingDelay: Double
-    public let estimatedPlayoutTimestamp: Double
-    public let jitterBufferDelay: Double
-    public let jitterBufferTargetDelay: Double
-    public let jitterBufferEmittedCount: UInt64
-    public let jitterBufferMinimumDelay: Double
-    public let totalSamplesReceived: UInt64
-    public let concealedSamples: UInt64
-    public let silentConcealedSamples: UInt64
-    public let concealmentEvents: UInt64
-    public let insertedSamplesForDeceleration: UInt64
-    public let removedSamplesForAcceleration: UInt64
-    public let audioLevel: Double
-    public let totalAudioEnergy: Double
-    public let totalSamplesDuration: Double
-    public let framesReceived: UInt
-    public let decoderImplementation: String
-    public let playoutId: String
-    public let powerEfficientDecoder: Bool
-    public let framesAssembledFromMultiplePackets: UInt
-    public let totalAssemblyTime: Double
-    public let retransmittedPacketsReceived: UInt64
-    public let retransmittedBytesReceived: UInt64
+    public let mid: String?
+    public let remoteId: String?
+    public let framesDecoded: UInt?
+    public let keyFramesDecoded: UInt?
+    public let framesRendered: UInt?
+    public let framesDropped: UInt?
+    public let frameWidth: UInt?
+    public let frameHeight: UInt?
+    public let framesPerSecond: Double?
+    public let qpSum: UInt64?
+    public let totalDecodeTime: Double?
+    public let totalInterFrameDelay: Double?
+    public let totalSquaredInterFrameDelay: Double?
+    public let pauseCount: UInt?
+    public let totalPausesDuration: Double?
+    public let freezeCount: UInt?
+    public let totalFreezesDuration: Double?
+    public let lastPacketReceivedTimestamp: Double?
+    public let headerBytesReceived: UInt64?
+    public let packetsDiscarded: UInt64?
+    public let fecPacketsReceived: UInt64?
+    public let fecPacketsDiscarded: UInt64?
+    public let bytesReceived: UInt64?
+    public let nackCount: UInt?
+    public let firCount: UInt?
+    public let pliCount: UInt?
+    public let totalProcessingDelay: Double?
+    public let estimatedPlayoutTimestamp: Double?
+    public let jitterBufferDelay: Double?
+    public let jitterBufferTargetDelay: Double?
+    public let jitterBufferEmittedCount: UInt64?
+    public let jitterBufferMinimumDelay: Double?
+    public let totalSamplesReceived: UInt64?
+    public let concealedSamples: UInt64?
+    public let silentConcealedSamples: UInt64?
+    public let concealmentEvents: UInt64?
+    public let insertedSamplesForDeceleration: UInt64?
+    public let removedSamplesForAcceleration: UInt64?
+    public let audioLevel: Double?
+    public let totalAudioEnergy: Double?
+    public let totalSamplesDuration: Double?
+    public let framesReceived: UInt?
+    public let decoderImplementation: String?
+    public let playoutId: String?
+    public let powerEfficientDecoder: Bool?
+    public let framesAssembledFromMultiplePackets: UInt?
+    public let totalAssemblyTime: Double?
+    public let retransmittedPacketsReceived: UInt64?
+    public let retransmittedBytesReceived: UInt64?
 
-    public let previous: InboundRtpStreamStatistics?
+    // Weak reference to previous stat so we can compare later.
+    public weak var previous: InboundRtpStreamStatistics?
 
     init?(id: String,
           timestamp: Double,
           rawValues: [String: NSObject],
-          previous: InboundRtpStreamStatistics?) {
-
-        self.trackIdentifier = rawValues.read("trackIdentifier")
+          previous: InboundRtpStreamStatistics?)
+    {
+        trackIdentifier = rawValues.readOptional("trackIdentifier")
         // self.kind = kind
-        self.mid = rawValues.read("mid")
-        self.remoteId = rawValues.read("remoteId")
-        self.framesDecoded = rawValues.read("framesDecoded")
-        self.keyFramesDecoded = rawValues.read("keyFramesDecoded")
-        self.framesRendered = rawValues.read("framesRendered")
-        self.framesDropped = rawValues.read("framesDropped")
-        self.frameWidth = rawValues.read("frameWidth")
-        self.frameHeight = rawValues.read("frameHeight")
-        self.framesPerSecond = rawValues.read("framesPerSecond")
-        self.qpSum = rawValues.read("qpSum")
-        self.totalDecodeTime = rawValues.read("totalDecodeTime")
-        self.totalInterFrameDelay = rawValues.read("totalInterFrameDelay")
-        self.totalSquaredInterFrameDelay = rawValues.read("totalSquaredInterFrameDelay")
-        self.pauseCount = rawValues.read("pauseCount")
-        self.totalPausesDuration = rawValues.read("totalPausesDuration")
-        self.freezeCount = rawValues.read("freezeCount")
-        self.totalFreezesDuration = rawValues.read("totalFreezesDuration")
-        self.lastPacketReceivedTimestamp = rawValues.read("lastPacketReceivedTimestamp")
-        self.headerBytesReceived = rawValues.read("headerBytesReceived")
-        self.packetsDiscarded = rawValues.read("packetsDiscarded")
-        self.fecPacketsReceived = rawValues.read("fecPacketsReceived")
-        self.fecPacketsDiscarded = rawValues.read("fecPacketsDiscarded")
-        self.bytesReceived = rawValues.read("bytesReceived")
-        self.nackCount = rawValues.read("nackCount")
-        self.firCount = rawValues.read("firCount")
-        self.pliCount = rawValues.read("pliCount")
-        self.totalProcessingDelay = rawValues.read("totalProcessingDelay")
-        self.estimatedPlayoutTimestamp = rawValues.read("estimatedPlayoutTimestamp")
-        self.jitterBufferDelay = rawValues.read("jitterBufferDelay")
-        self.jitterBufferTargetDelay = rawValues.read("jitterBufferTargetDelay")
-        self.jitterBufferEmittedCount = rawValues.read("jitterBufferEmittedCount")
-        self.jitterBufferMinimumDelay = rawValues.read("jitterBufferMinimumDelay")
-        self.totalSamplesReceived = rawValues.read("totalSamplesReceived")
-        self.concealedSamples = rawValues.read("concealedSamples")
-        self.silentConcealedSamples = rawValues.read("silentConcealedSamples")
-        self.concealmentEvents = rawValues.read("concealmentEvents")
-        self.insertedSamplesForDeceleration = rawValues.read("insertedSamplesForDeceleration")
-        self.removedSamplesForAcceleration = rawValues.read("removedSamplesForAcceleration")
-        self.audioLevel = rawValues.read("audioLevel")
-        self.totalAudioEnergy = rawValues.read("totalAudioEnergy")
-        self.totalSamplesDuration = rawValues.read("totalSamplesDuration")
-        self.framesReceived = rawValues.read("framesReceived")
-        self.decoderImplementation = rawValues.read("decoderImplementation")
-        self.playoutId = rawValues.read("playoutId")
-        self.powerEfficientDecoder = rawValues.read("powerEfficientDecoder")
-        self.framesAssembledFromMultiplePackets = rawValues.read("framesAssembledFromMultiplePackets")
-        self.totalAssemblyTime = rawValues.read("totalAssemblyTime")
-        self.retransmittedPacketsReceived = rawValues.read("retransmittedPacketsReceived")
-        self.retransmittedBytesReceived = rawValues.read("retransmittedBytesReceived")
+        mid = rawValues.readOptional("mid")
+        remoteId = rawValues.readOptional("remoteId")
+        framesDecoded = rawValues.readOptional("framesDecoded")
+        keyFramesDecoded = rawValues.readOptional("keyFramesDecoded")
+        framesRendered = rawValues.readOptional("framesRendered")
+        framesDropped = rawValues.readOptional("framesDropped")
+        frameWidth = rawValues.readOptional("frameWidth")
+        frameHeight = rawValues.readOptional("frameHeight")
+        framesPerSecond = rawValues.readOptional("framesPerSecond")
+        qpSum = rawValues.readOptional("qpSum")
+        totalDecodeTime = rawValues.readOptional("totalDecodeTime")
+        totalInterFrameDelay = rawValues.readOptional("totalInterFrameDelay")
+        totalSquaredInterFrameDelay = rawValues.readOptional("totalSquaredInterFrameDelay")
+        pauseCount = rawValues.readOptional("pauseCount")
+        totalPausesDuration = rawValues.readOptional("totalPausesDuration")
+        freezeCount = rawValues.readOptional("freezeCount")
+        totalFreezesDuration = rawValues.readOptional("totalFreezesDuration")
+        lastPacketReceivedTimestamp = rawValues.readOptional("lastPacketReceivedTimestamp")
+        headerBytesReceived = rawValues.readOptional("headerBytesReceived")
+        packetsDiscarded = rawValues.readOptional("packetsDiscarded")
+        fecPacketsReceived = rawValues.readOptional("fecPacketsReceived")
+        fecPacketsDiscarded = rawValues.readOptional("fecPacketsDiscarded")
+        bytesReceived = rawValues.readOptional("bytesReceived")
+        nackCount = rawValues.readOptional("nackCount")
+        firCount = rawValues.readOptional("firCount")
+        pliCount = rawValues.readOptional("pliCount")
+        totalProcessingDelay = rawValues.readOptional("totalProcessingDelay")
+        estimatedPlayoutTimestamp = rawValues.readOptional("estimatedPlayoutTimestamp")
+        jitterBufferDelay = rawValues.readOptional("jitterBufferDelay")
+        jitterBufferTargetDelay = rawValues.readOptional("jitterBufferTargetDelay")
+        jitterBufferEmittedCount = rawValues.readOptional("jitterBufferEmittedCount")
+        jitterBufferMinimumDelay = rawValues.readOptional("jitterBufferMinimumDelay")
+        totalSamplesReceived = rawValues.readOptional("totalSamplesReceived")
+        concealedSamples = rawValues.readOptional("concealedSamples")
+        silentConcealedSamples = rawValues.readOptional("silentConcealedSamples")
+        concealmentEvents = rawValues.readOptional("concealmentEvents")
+        insertedSamplesForDeceleration = rawValues.readOptional("insertedSamplesForDeceleration")
+        removedSamplesForAcceleration = rawValues.readOptional("removedSamplesForAcceleration")
+        audioLevel = rawValues.readOptional("audioLevel")
+        totalAudioEnergy = rawValues.readOptional("totalAudioEnergy")
+        totalSamplesDuration = rawValues.readOptional("totalSamplesDuration")
+        framesReceived = rawValues.readOptional("framesReceived")
+        decoderImplementation = rawValues.readOptional("decoderImplementation")
+        playoutId = rawValues.readOptional("playoutId")
+        powerEfficientDecoder = rawValues.readOptional("powerEfficientDecoder")
+        framesAssembledFromMultiplePackets = rawValues.readOptional("framesAssembledFromMultiplePackets")
+        totalAssemblyTime = rawValues.readOptional("totalAssemblyTime")
+        retransmittedPacketsReceived = rawValues.readOptional("retransmittedPacketsReceived")
+        retransmittedBytesReceived = rawValues.readOptional("retransmittedBytesReceived")
 
         self.previous = previous
 
@@ -662,22 +634,21 @@ public class InboundRtpStreamStatistics: ReceivedRtpStreamStatistics {
 // type: remote-inbound-rtp
 @objc
 public class RemoteInboundRtpStreamStatistics: ReceivedRtpStreamStatistics {
-
-    public let localId: String
-    public let roundTripTime: Double
-    public let totalRoundTripTime: Double
-    public let fractionLost: Double
-    public let roundTripTimeMeasurements: UInt64
+    public let localId: String?
+    public let roundTripTime: Double?
+    public let totalRoundTripTime: Double?
+    public let fractionLost: Double?
+    public let roundTripTimeMeasurements: UInt64?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.localId = rawValues.read("localId")
-        self.roundTripTime = rawValues.read("roundTripTime")
-        self.totalRoundTripTime = rawValues.read("totalRoundTripTime")
-        self.fractionLost = rawValues.read("fractionLost")
-        self.roundTripTimeMeasurements = rawValues.read("roundTripTimeMeasurements")
+          rawValues: [String: NSObject])
+    {
+        localId = rawValues.readOptional("localId")
+        roundTripTime = rawValues.readOptional("roundTripTime")
+        totalRoundTripTime = rawValues.readOptional("totalRoundTripTime")
+        fractionLost = rawValues.readOptional("fractionLost")
+        roundTripTimeMeasurements = rawValues.readOptional("roundTripTimeMeasurements")
 
         super.init(id: id,
                    type: .remoteInboundRtp,
@@ -689,88 +660,91 @@ public class RemoteInboundRtpStreamStatistics: ReceivedRtpStreamStatistics {
 // type: outbound-rtp
 @objc
 public class OutboundRtpStreamStatistics: SentRtpStreamStatistics {
-
     public class QualityLimitationDurations {
+        public let none: Double?
+        public let cpu: Double?
+        public let bandwidth: Double?
+        public let other: Double?
 
-        public let none: Double
-        public let cpu: Double
-        public let bandwidth: Double
-        public let other: Double
+        init?(rawValues: [String: NSObject]) {
+            none = rawValues.readOptional("none")
+            cpu = rawValues.readOptional("cpu")
+            bandwidth = rawValues.readOptional("bandwidth")
+            other = rawValues.readOptional("other")
 
-        init(rawValues: [String: NSObject]) {
-            self.none = rawValues.read("none")
-            self.cpu = rawValues.read("cpu")
-            self.bandwidth = rawValues.read("bandwidth")
-            self.other = rawValues.read("other")
+            if none == nil, cpu == nil, bandwidth == nil, other == nil {
+                return nil
+            }
         }
     }
 
-    public let mid: String
-    public let mediaSourceId: String
-    public let remoteId: String
-    public let rid: String
-    public let headerBytesSent: UInt64
-    public let retransmittedPacketsSent: UInt64
-    public let retransmittedBytesSent: UInt64
-    public let targetBitrate: Double
-    public let totalEncodedBytesTarget: UInt64
-    public let frameWidth: UInt
-    public let frameHeight: UInt
-    public let framesPerSecond: Double
-    public let framesSent: UInt
-    public let hugeFramesSent: UInt
-    public let framesEncoded: UInt
-    public let keyFramesEncoded: UInt
-    public let qpSum: UInt64
-    public let totalEncodeTime: Double
-    public let totalPacketSendDelay: Double
-    public let qualityLimitationReason: QualityLimitationReason
-    public let qualityLimitationDurations: QualityLimitationDurations
-    public let qualityLimitationResolutionChanges: UInt
-    public let nackCount: UInt
-    public let firCount: UInt
-    public let pliCount: UInt
-    public let encoderImplementation: String
-    public let powerEfficientEncoder: Bool
-    public let active: Bool
-    public let scalabilityMode: String
+    public let mid: String?
+    public let mediaSourceId: String?
+    public let remoteId: String?
+    public let rid: String?
+    public let headerBytesSent: UInt64?
+    public let retransmittedPacketsSent: UInt64?
+    public let retransmittedBytesSent: UInt64?
+    public let targetBitrate: Double?
+    public let totalEncodedBytesTarget: UInt64?
+    public let frameWidth: UInt?
+    public let frameHeight: UInt?
+    public let framesPerSecond: Double?
+    public let framesSent: UInt?
+    public let hugeFramesSent: UInt?
+    public let framesEncoded: UInt?
+    public let keyFramesEncoded: UInt?
+    public let qpSum: UInt64?
+    public let totalEncodeTime: Double?
+    public let totalPacketSendDelay: Double?
+    public let qualityLimitationReason: QualityLimitationReason?
+    public let qualityLimitationDurations: QualityLimitationDurations?
+    public let qualityLimitationResolutionChanges: UInt?
+    public let nackCount: UInt?
+    public let firCount: UInt?
+    public let pliCount: UInt?
+    public let encoderImplementation: String?
+    public let powerEfficientEncoder: Bool?
+    public let active: Bool?
+    public let scalabilityMode: String?
 
-    public let previous: OutboundRtpStreamStatistics?
+    // Weak reference to previous stat so we can compare later.
+    public weak var previous: OutboundRtpStreamStatistics?
 
     init?(id: String,
           timestamp: Double,
           rawValues: [String: NSObject],
-          previous: OutboundRtpStreamStatistics?) {
-
-        self.mid = rawValues.read("mid")
-        self.mediaSourceId = rawValues.read("mediaSourceId")
-        self.remoteId = rawValues.read("remoteId")
-        self.rid = rawValues.read("rid")
-        self.headerBytesSent = rawValues.read("headerBytesSent")
-        self.retransmittedPacketsSent = rawValues.read("retransmittedPacketsSent")
-        self.retransmittedBytesSent = rawValues.read("retransmittedBytesSent")
-        self.targetBitrate = rawValues.read("targetBitrate")
-        self.totalEncodedBytesTarget = rawValues.read("totalEncodedBytesTarget")
-        self.frameWidth = rawValues.read("frameWidth")
-        self.frameHeight = rawValues.read("frameHeight")
-        self.framesPerSecond = rawValues.read("framesPerSecond")
-        self.framesSent = rawValues.read("framesSent")
-        self.hugeFramesSent = rawValues.read("hugeFramesSent")
-        self.framesEncoded = rawValues.read("framesEncoded")
-        self.keyFramesEncoded = rawValues.read("keyFramesEncoded")
-        self.qpSum = rawValues.read("qpSum")
-        self.totalEncodeTime = rawValues.read("totalEncodeTime")
-        self.totalPacketSendDelay = rawValues.read("totalPacketSendDelay")
-        self.qualityLimitationReason = QualityLimitationReason(rawValue: (rawValues.read("qualityLimitationReason"))) ?? .none
-        self.qualityLimitationDurations = QualityLimitationDurations(rawValues: rawValues.read("qualityLimitationDurations"))
-        self.qualityLimitationResolutionChanges = rawValues.read("qualityLimitationResolutionChanges")
-        self.nackCount = rawValues.read("nackCount")
-        self.firCount = rawValues.read("firCount")
-        self.pliCount = rawValues.read("pliCount")
-        self.encoderImplementation = rawValues.read("encoderImplementation")
-        self.powerEfficientEncoder = rawValues.read("powerEfficientEncoder")
-        self.active = rawValues.read("active")
-        self.scalabilityMode = rawValues.read("scalabilityMode")
+          previous: OutboundRtpStreamStatistics?)
+    {
+        mid = rawValues.readOptional("mid")
+        mediaSourceId = rawValues.readOptional("mediaSourceId")
+        remoteId = rawValues.readOptional("remoteId")
+        rid = rawValues.readOptional("rid")
+        headerBytesSent = rawValues.readOptional("headerBytesSent")
+        retransmittedPacketsSent = rawValues.readOptional("retransmittedPacketsSent")
+        retransmittedBytesSent = rawValues.readOptional("retransmittedBytesSent")
+        targetBitrate = rawValues.readOptional("targetBitrate")
+        totalEncodedBytesTarget = rawValues.readOptional("totalEncodedBytesTarget")
+        frameWidth = rawValues.readOptional("frameWidth")
+        frameHeight = rawValues.readOptional("frameHeight")
+        framesPerSecond = rawValues.readOptional("framesPerSecond")
+        framesSent = rawValues.readOptional("framesSent")
+        hugeFramesSent = rawValues.readOptional("hugeFramesSent")
+        framesEncoded = rawValues.readOptional("framesEncoded")
+        keyFramesEncoded = rawValues.readOptional("keyFramesEncoded")
+        qpSum = rawValues.readOptional("qpSum")
+        totalEncodeTime = rawValues.readOptional("totalEncodeTime")
+        totalPacketSendDelay = rawValues.readOptional("totalPacketSendDelay")
+        qualityLimitationReason = QualityLimitationReason(rawValue: rawValues.readNonOptional("qualityLimitationReason"))
+        qualityLimitationDurations = QualityLimitationDurations(rawValues: rawValues.readNonOptional("qualityLimitationDurations"))
+        qualityLimitationResolutionChanges = rawValues.readOptional("qualityLimitationResolutionChanges")
+        nackCount = rawValues.readOptional("nackCount")
+        firCount = rawValues.readOptional("firCount")
+        pliCount = rawValues.readOptional("pliCount")
+        encoderImplementation = rawValues.readOptional("encoderImplementation")
+        powerEfficientEncoder = rawValues.readOptional("powerEfficientEncoder")
+        active = rawValues.readOptional("active")
+        scalabilityMode = rawValues.readOptional("scalabilityMode")
 
         self.previous = previous
 
@@ -784,24 +758,23 @@ public class OutboundRtpStreamStatistics: SentRtpStreamStatistics {
 // type: remote-outbound-rtp
 @objc
 public class RemoteOutboundRtpStreamStatistics: SentRtpStreamStatistics {
-
-    public let localId: String
-    public let remoteTimestamp: Double
-    public let reportsSent: UInt64
-    public let roundTripTime: Double
-    public let totalRoundTripTime: Double
-    public let roundTripTimeMeasurements: UInt64
+    public let localId: String?
+    public let remoteTimestamp: Double?
+    public let reportsSent: UInt64?
+    public let roundTripTime: Double?
+    public let totalRoundTripTime: Double?
+    public let roundTripTimeMeasurements: UInt64?
 
     init?(id: String,
           timestamp: Double,
-          rawValues: [String: NSObject]) {
-
-        self.localId = rawValues.read("localId")
-        self.remoteTimestamp = rawValues.read("remoteTimestamp")
-        self.reportsSent = rawValues.read("reportsSent")
-        self.roundTripTime = rawValues.read("roundTripTime")
-        self.totalRoundTripTime = rawValues.read("totalRoundTripTime")
-        self.roundTripTimeMeasurements = rawValues.read("roundTripTimeMeasurements")
+          rawValues: [String: NSObject])
+    {
+        localId = rawValues.readOptional("localId")
+        remoteTimestamp = rawValues.readOptional("remoteTimestamp")
+        reportsSent = rawValues.readOptional("reportsSent")
+        roundTripTime = rawValues.readOptional("roundTripTime")
+        totalRoundTripTime = rawValues.readOptional("totalRoundTripTime")
+        roundTripTimeMeasurements = rawValues.readOptional("roundTripTimeMeasurements")
 
         super.init(id: id,
                    type: .remoteOutboundRtp,
@@ -812,30 +785,29 @@ public class RemoteOutboundRtpStreamStatistics: SentRtpStreamStatistics {
 
 @objc
 public class AudioSourceStatistics: MediaSourceStatistics {
-
-    public let audioLevel: Double
-    public let totalAudioEnergy: Double
-    public let totalSamplesDuration: Double
-    public let echoReturnLoss: Double
-    public let echoReturnLossEnhancement: Double
-    public let droppedSamplesDuration: Double
-    public let droppedSamplesEvents: UInt
-    public let totalCaptureDelay: Double
-    public let totalSamplesCaptured: UInt64
+    public let audioLevel: Double?
+    public let totalAudioEnergy: Double?
+    public let totalSamplesDuration: Double?
+    public let echoReturnLoss: Double?
+    public let echoReturnLossEnhancement: Double?
+    public let droppedSamplesDuration: Double?
+    public let droppedSamplesEvents: UInt?
+    public let totalCaptureDelay: Double?
+    public let totalSamplesCaptured: UInt64?
 
     override init?(id: String,
                    timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.audioLevel = rawValues.read("audioLevel")
-        self.totalAudioEnergy = rawValues.read("totalAudioEnergy")
-        self.totalSamplesDuration = rawValues.read("totalSamplesDuration")
-        self.echoReturnLoss = rawValues.read("echoReturnLoss")
-        self.echoReturnLossEnhancement = rawValues.read("echoReturnLossEnhancement")
-        self.droppedSamplesDuration = rawValues.read("droppedSamplesDuration")
-        self.droppedSamplesEvents = rawValues.read("droppedSamplesEvents")
-        self.totalCaptureDelay = rawValues.read("totalCaptureDelay")
-        self.totalSamplesCaptured = rawValues.read("totalSamplesCaptured")
+                   rawValues: [String: NSObject])
+    {
+        audioLevel = rawValues.readOptional("audioLevel")
+        totalAudioEnergy = rawValues.readOptional("totalAudioEnergy")
+        totalSamplesDuration = rawValues.readOptional("totalSamplesDuration")
+        echoReturnLoss = rawValues.readOptional("echoReturnLoss")
+        echoReturnLossEnhancement = rawValues.readOptional("echoReturnLossEnhancement")
+        droppedSamplesDuration = rawValues.readOptional("droppedSamplesDuration")
+        droppedSamplesEvents = rawValues.readOptional("droppedSamplesEvents")
+        totalCaptureDelay = rawValues.readOptional("totalCaptureDelay")
+        totalSamplesCaptured = rawValues.readOptional("totalSamplesCaptured")
 
         super.init(id: id,
                    timestamp: timestamp,
@@ -845,20 +817,19 @@ public class AudioSourceStatistics: MediaSourceStatistics {
 
 @objc
 public class VideoSourceStatistics: MediaSourceStatistics {
-
-    public let width: UInt
-    public let height: UInt
-    public let frames: UInt
-    public let framesPerSecond: Double
+    public let width: UInt?
+    public let height: UInt?
+    public let frames: UInt?
+    public let framesPerSecond: Double?
 
     override init?(id: String,
                    timestamp: Double,
-                   rawValues: [String: NSObject]) {
-
-        self.width = rawValues.read("width")
-        self.height = rawValues.read("height")
-        self.frames = rawValues.read("frames")
-        self.framesPerSecond = rawValues.read("framesPerSecond")
+                   rawValues: [String: NSObject])
+    {
+        width = rawValues.readOptional("width")
+        height = rawValues.readOptional("height")
+        frames = rawValues.readOptional("frames")
+        framesPerSecond = rawValues.readOptional("framesPerSecond")
 
         super.init(id: id,
                    timestamp: timestamp,
@@ -866,41 +837,44 @@ public class VideoSourceStatistics: MediaSourceStatistics {
     }
 }
 
-internal extension Dictionary where Key == String, Value == NSObject {
-
-    func read(_ key: String) -> Int {
-        (self[key] as? Int) ?? 0
+extension [String: NSObject] {
+    func readOptional(_ key: String) -> Int? {
+        self[key] as? Int
     }
 
-    func read(_ key: String) -> UInt {
-        (self[key] as? UInt) ?? 0
+    func readOptional(_ key: String) -> UInt? {
+        self[key] as? UInt
     }
 
-    func read(_ key: String) -> UInt64 {
-        (self[key] as? UInt64) ?? 0
+    func readOptional(_ key: String) -> UInt64? {
+        self[key] as? UInt64
     }
 
-    func read(_ key: String) -> Int64 {
-        (self[key] as? Int64) ?? 0
+    func readOptional(_ key: String) -> Int64? {
+        self[key] as? Int64
     }
 
-    func read(_ key: String) -> UInt16 {
-        (self[key] as? UInt16) ?? 0
+    func readOptional(_ key: String) -> UInt16? {
+        self[key] as? UInt16
     }
 
-    func read(_ key: String) -> Double {
-        (self[key] as? Double) ?? 0.0
+    func readOptional(_ key: String) -> Double? {
+        self[key] as? Double
     }
 
-    func read(_ key: String) -> String {
-        (self[key] as? String) ?? ""
+    func readOptional(_ key: String) -> String? {
+        self[key] as? String
     }
 
-    func read(_ key: String) -> Bool {
-        (self[key] as? Bool) ?? false
+    func readOptional(_ key: String) -> Bool? {
+        self[key] as? Bool
     }
 
-    func read(_ key: String) -> [String: NSObject] {
+    func readNonOptional(_ key: String) -> String {
+        readOptional(key) ?? ""
+    }
+
+    func readNonOptional(_ key: String) -> [String: NSObject] {
         (self[key] as? [String: NSObject]) ?? [:]
     }
 }

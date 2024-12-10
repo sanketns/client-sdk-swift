@@ -1,16 +1,26 @@
 <!--BEGIN_BANNER_IMAGE-->
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="/.github/banner_dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="/.github/banner_light.png">
-    <img style="width:100%;" alt="The LiveKit icon, the name of the repository and some sample code in the background." src="/.github/banner_light.png">
-  </picture>
-  <!--END_BANNER_IMAGE-->
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="/.github/banner_dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="/.github/banner_light.png">
+  <img style="width:100%;" alt="The LiveKit icon, the name of the repository and some sample code in the background." src="https://raw.githubusercontent.com/livekit/client-sdk-swift/main/.github/banner_light.png">
+</picture>
+
+<!--END_BANNER_IMAGE-->
 
 # iOS/macOS Swift SDK for LiveKit
 
-<!--BEGIN_DESCRIPTION-->Use this SDK to add real-time video, audio and data features to your Swift app. By connecting to a self- or cloud-hosted <a href="https://livekit.io/">LiveKit</a> server, you can quickly build applications like interactive live streaming or video calls with just a few lines of code.<!--END_DESCRIPTION-->
+<!--BEGIN_DESCRIPTION-->
+
+Use this SDK to add realtime video, audio and data features to your Swift app. By connecting to <a href="https://livekit.io/">LiveKit</a> Cloud or a self-hosted server, you can quickly build applications such as multi-modal AI, live streaming, or video calls with just a few lines of code.
+
+<!--END_DESCRIPTION-->
 
 ## Docs & Example app
+
+> [!NOTE]
+> Version 2 of the Swift SDK contains breaking changes from Version 1.
+> Read the [migration guide](https://docs.livekit.io/guides/migrate-from-v1/) for a detailed overview of what has changed.
 
 Docs and guides are at [https://docs.livekit.io](https://docs.livekit.io).
 
@@ -30,7 +40,7 @@ Add the dependency and also to your target
 let package = Package(
   ...
   dependencies: [
-    .package(name: "LiveKit", url: "https://github.com/livekit/client-sdk-swift.git", .upToNextMajor("1.0.0")),
+    .package(name: "LiveKit", url: "https://github.com/livekit/client-sdk-swift.git", .upToNextMajor("2.0.19")),
   ],
   targets: [
     .target(
@@ -62,14 +72,14 @@ class RoomViewController: UIViewController {
     lazy var remoteVideoView: VideoView = {
         let videoView = VideoView()
         view.addSubview(videoView)
-        // additional initialization ...
+        // Additional initialization ...
         return videoView
     }()
 
     lazy var localVideoView: VideoView = {
         let videoView = VideoView()
         view.addSubview(videoView)
-        // additional initialization ...
+        // Additional initialization ...
         return videoView
     }()
 
@@ -77,38 +87,37 @@ class RoomViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .white
 
-        let url: String = "ws://your_host"
-        let token: String = "your_jwt_token"
+        let url = "ws://your_host"
+        let token = "your_jwt_token"
 
-        room.connect(url, token).then { room in
+        Task {
+            do {
+                try await room.connect(url: url, token: token)
+                // Connection successful...
 
-            // Publish camera & mic
-            room.localParticipant?.setCamera(enabled: true)
-            room.localParticipant?.setMicrophone(enabled: true)
-
-        }.catch { error in
-            // failed to connect
+                // Publishing camera & mic...
+                try await room.localParticipant.setCamera(enabled: true)
+                try await room.localParticipant.setMicrophone(enabled: true)
+            } catch {
+                // Failed to connect
+            }
         }
     }
 }
 
 extension RoomViewController: RoomDelegate {
 
-    func room(_ room: Room, localParticipant: LocalParticipant, didPublish publication: LocalTrackPublication) {
-        guard let track = publication?.track as? VideoTrack else {
-            return
-        }
+    func room(_: Room, participant _: LocalParticipant, didPublishTrack publication: LocalTrackPublication) {
+        guard let track = publication.track as? VideoTrack else { return }
         DispatchQueue.main.async {
-            localVideoView.track = track
+            self.localVideoView.track = track
         }
     }
 
-    func room(_ room: Room, participant: RemoteParticipant, didSubscribe publication: RemoteTrackPublication, track: Track) {
-        guard let track = track as? VideoTrack else {
-          return
-        }
+    func room(_: Room, participant _: RemoteParticipant, didSubscribeTrack publication: RemoteTrackPublication) {
+        guard let track = publication.track as? VideoTrack else { return }
         DispatchQueue.main.async {
-            remoteVideoView.track = track
+            self.remoteVideoView.track = track
         }
     }
 }
@@ -127,7 +136,7 @@ Since `VideoView` is a UI component, all operations (read/write properties etc) 
 Other core classes can be accessed from any thread.
 
 Delegates will be called on the SDK's internal thread.
-Make sure any access to the UI is within the main thread, for example by using `DispatchQueue.main.async`.
+Make sure any access to your app's UI elements are from the main thread, for example by using `@MainActor` or `DispatchQueue.main.async`.
 
 ### Memory management
 
@@ -142,9 +151,26 @@ LiveKit will automatically manage the underlying `AVAudioSession` while connecte
 
 However, if you'd like to customize this behavior, you would override `AudioManager.customConfigureAudioSessionFunc` to manage the underlying session on your own. See [example here](https://github.com/livekit/client-sdk-swift/blob/1f5959f787805a4b364f228ccfb413c1c4944748/Sources/LiveKit/Track/AudioManager.swift#L153) for the default behavior.
 
+### Integration with CallKit
+
+To integrate with CallKit for background-triggered incoming calls, LiveKit's audio session must be synchronized with CallKit's audio session:
+
+1. Add `import LiveKitWebRTC` to your CallProvider file.
+2. In your `CXProviderDelegate` implementation, add the following:
+
+```swift
+func provider(_ provider: CXProvider, didActivate audioSession: AVAudioSession){
+    LKRTCAudioSession.sharedInstance().audioSessionDidActivate(audioSession)
+    // ...
+}
+func provider(_ provider: CXProvider, didDeactivate audioSession: AVAudioSession) {
+    LKRTCAudioSession.sharedInstance().audioSessionDidDeactivate(audioSession)
+    // ...
+}
+```
+
 ### iOS Simulator limitations
 
-- Currently, `VideoView` will use OpenGL for iOS Simulator.
 - Publishing the camera track is not supported by iOS Simulator.
 
 ### ScrollView performance
@@ -210,15 +236,10 @@ For the full example, see 👉 [UIKit Minimal Example](https://github.com/liveki
 
 # Frequently asked questions
 
-### Mic privacy indicator (orange dot) remains on even after muting audio track
-
-You will need to un-publish the LocalAudioTrack for the indicator to turn off.
-More discussion here https://github.com/livekit/client-sdk-swift/issues/140
-
 ### How to publish camera in 60 FPS ?
 
 - Create a `LocalVideoTrack` by calling `LocalVideoTrack.createCameraTrack(options: CameraCaptureOptions(fps: 60))`.
-- Publish with `LocalParticipant.publishVideoTrack(track: track, publishOptions: VideoPublishOptions(encoding: VideoEncoding(maxFps: 60)))`.
+- Publish with `LocalParticipant.publish(videoTrack: track, publishOptions: VideoPublishOptions(encoding: VideoEncoding(maxFps: 60)))`.
 
 # Known issues
 
@@ -236,16 +257,19 @@ If your app is targeting macOS Catalina, make sure to do the following to avoid 
 
 # Getting help / Contributing
 
-Please join us on [Slack](https://join.slack.com/t/livekit-users/shared_invite/zt-rrdy5abr-5pZ1wW8pXEkiQxBzFiXPUg) to get help from our [devs](https://github.com/orgs/livekit/teams/devs/members) / community members. We welcome your contributions(PRs) and details can be discussed there.
+Please join us on [Slack](https://livekit.io/join-slack) to get help from our devs / community members. We welcome your contributions(PRs) and details can be discussed there.
 
 <!--BEGIN_REPO_NAV-->
+
 <br/><table>
+
 <thead><tr><th colspan="2">LiveKit Ecosystem</th></tr></thead>
 <tbody>
-<tr><td>Client SDKs</td><td><a href="https://github.com/livekit/components-js">Components</a> · <a href="https://github.com/livekit/client-sdk-js">JavaScript</a> · <a href="https://github.com/livekit/client-sdk-rust">Rust</a> · <b>iOS/macOS</b> · <a href="https://github.com/livekit/client-sdk-android">Android</a> · <a href="https://github.com/livekit/client-sdk-flutter">Flutter</a> · <a href="https://github.com/livekit/client-sdk-unity-web">Unity (web)</a> · <a href="https://github.com/livekit/client-sdk-react-native">React Native (beta)</a></td></tr><tr></tr>
-<tr><td>Server SDKs</td><td><a href="https://github.com/livekit/server-sdk-js">Node.js</a> · <a href="https://github.com/livekit/server-sdk-go">Golang</a> · <a href="https://github.com/livekit/server-sdk-ruby">Ruby</a> · <a href="https://github.com/livekit/server-sdk-kotlin">Java/Kotlin</a> · <a href="https://github.com/agence104/livekit-server-sdk-php">PHP (community)</a> · <a href="https://github.com/tradablebits/livekit-server-sdk-python">Python (community)</a></td></tr><tr></tr>
-<tr><td>Services</td><td><a href="https://github.com/livekit/livekit">Livekit server</a> · <a href="https://github.com/livekit/egress">Egress</a> · <a href="https://github.com/livekit/ingress">Ingress</a></td></tr><tr></tr>
-<tr><td>Resources</td><td><a href="https://docs.livekit.io">Docs</a> · <a href="https://github.com/livekit-examples">Example apps</a> · <a href="https://livekit.io/cloud">Cloud</a> · <a href="https://docs.livekit.io/oss/deployment">Self-hosting</a> · <a href="https://github.com/livekit/livekit-cli">CLI</a></td></tr>
+<tr><td>Realtime SDKs</td><td><a href="https://github.com/livekit/components-js">React Components</a> · <a href="https://github.com/livekit/client-sdk-js">Browser</a> · <a href="https://github.com/livekit/components-swift">Swift Components</a> · <b>iOS/macOS/visionOS</b> · <a href="https://github.com/livekit/client-sdk-android">Android</a> · <a href="https://github.com/livekit/client-sdk-flutter">Flutter</a> · <a href="https://github.com/livekit/client-sdk-react-native">React Native</a> · <a href="https://github.com/livekit/rust-sdks">Rust</a> · <a href="https://github.com/livekit/node-sdks">Node.js</a> · <a href="https://github.com/livekit/python-sdks">Python</a> · <a href="https://github.com/livekit/client-sdk-unity-web">Unity (web)</a> · <a href="https://github.com/livekit/client-sdk-unity">Unity (beta)</a></td></tr><tr></tr>
+<tr><td>Server APIs</td><td><a href="https://github.com/livekit/node-sdks">Node.js</a> · <a href="https://github.com/livekit/server-sdk-go">Golang</a> · <a href="https://github.com/livekit/server-sdk-ruby">Ruby</a> · <a href="https://github.com/livekit/server-sdk-kotlin">Java/Kotlin</a> · <a href="https://github.com/livekit/python-sdks">Python</a> · <a href="https://github.com/livekit/rust-sdks">Rust</a> · <a href="https://github.com/agence104/livekit-server-sdk-php">PHP (community)</a></td></tr><tr></tr>
+<tr><td>Agents Frameworks</td><td><a href="https://github.com/livekit/agents">Python</a> · <a href="https://github.com/livekit/agent-playground">Playground</a></td></tr><tr></tr>
+<tr><td>Services</td><td><a href="https://github.com/livekit/livekit">LiveKit server</a> · <a href="https://github.com/livekit/egress">Egress</a> · <a href="https://github.com/livekit/ingress">Ingress</a> · <a href="https://github.com/livekit/sip">SIP</a></td></tr><tr></tr>
+<tr><td>Resources</td><td><a href="https://docs.livekit.io">Docs</a> · <a href="https://github.com/livekit-examples">Example apps</a> · <a href="https://livekit.io/cloud">Cloud</a> · <a href="https://docs.livekit.io/home/self-hosting/deployment">Self-hosting</a> · <a href="https://github.com/livekit/livekit-cli">CLI</a></td></tr>
 </tbody>
 </table>
 <!--END_REPO_NAV-->

@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,8 @@
 
 import Foundation
 
-internal struct TrackSettings: Equatable, Hashable {
-
-    let enabled: Bool
+struct TrackSettings: Equatable, Hashable, Sendable {
+    let isEnabled: Bool
     let dimensions: Dimensions
     let videoQuality: VideoQuality
     let preferredFPS: UInt
@@ -26,21 +25,22 @@ internal struct TrackSettings: Equatable, Hashable {
     init(enabled: Bool = false,
          dimensions: Dimensions = .zero,
          videoQuality: VideoQuality = .low,
-         preferredFPS: UInt = 0) {
-
-        self.enabled = enabled
+         preferredFPS: UInt = 0)
+    {
+        isEnabled = enabled
         self.dimensions = dimensions
         self.videoQuality = videoQuality
         self.preferredFPS = preferredFPS
     }
 
-    func copyWith(enabled: Bool? = nil,
-                  dimensions: Dimensions? = nil,
-                  videoQuality: VideoQuality? = nil,
-                  preferredFPS: UInt? = nil) -> TrackSettings {
-        TrackSettings(enabled: enabled ?? self.enabled,
-                      dimensions: dimensions ?? self.dimensions,
-                      videoQuality: videoQuality ?? self.videoQuality,
-                      preferredFPS: preferredFPS ?? self.preferredFPS)
+    func copyWith(isEnabled: ValueOrAbsent<Bool> = .absent,
+                  dimensions: ValueOrAbsent<Dimensions> = .absent,
+                  videoQuality: ValueOrAbsent<VideoQuality> = .absent,
+                  preferredFPS: ValueOrAbsent<UInt> = .absent) -> TrackSettings
+    {
+        TrackSettings(enabled: isEnabled.value(ifAbsent: self.isEnabled),
+                      dimensions: dimensions.value(ifAbsent: self.dimensions),
+                      videoQuality: videoQuality.value(ifAbsent: self.videoQuality),
+                      preferredFPS: preferredFPS.value(ifAbsent: self.preferredFPS))
     }
 }

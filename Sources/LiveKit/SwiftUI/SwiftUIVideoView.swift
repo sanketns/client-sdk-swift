@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 LiveKit
+ * Copyright 2024 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,115 +17,83 @@
 import Foundation
 import SwiftUI
 
-/// This class receives ``TrackDelegate`` events since a struct can't be used for a delegate
-internal class TrackDelegateReceiver: TrackDelegate, Loggable {
-
-    @Binding var dimensions: Dimensions?
-    @Binding var stats: TrackStats?
-
-    init(dimensions: Binding<Dimensions?>, stats: Binding<TrackStats?>) {
-        self._dimensions = dimensions
-        self._stats = stats
-    }
-
-    func track(_ track: VideoTrack, didUpdate dimensions: Dimensions?) {
-        Task.detached { @MainActor in
-            self.dimensions = dimensions
-        }
-    }
-
-    func track(_ track: Track, didUpdate stats: TrackStats) {
-        Task.detached { @MainActor in
-            self.stats = stats
-        }
-    }
-}
-
-/// This class receives ``VideoViewDelegate`` events since a struct can't be used for a delegate
-internal class VideoViewDelegateReceiver: VideoViewDelegate, Loggable {
-
-    @Binding var isRendering: Bool
-
-    init(isRendering: Binding<Bool>) {
-        self._isRendering = isRendering
-    }
-
-    func videoView(_ videoView: VideoView, didUpdate isRendering: Bool) {
-        Task.detached { @MainActor in
-            self.isRendering = isRendering
-        }
-    }
-}
-
 /// A ``VideoView`` that can be used in SwiftUI.
 /// Supports both iOS and macOS.
 public struct SwiftUIVideoView: NativeViewRepresentable {
-
-    typealias ViewType = VideoView
+    public typealias ViewType = VideoView
 
     /// Pass a ``VideoTrack`` of a ``Participant``.
     let track: VideoTrack
     let layoutMode: VideoView.LayoutMode
     let mirrorMode: VideoView.MirrorMode
-    let debugMode: Bool
+    let renderMode: VideoView.RenderMode
+    let rotationOverride: VideoRotation?
+    let pinchToZoomOptions: VideoView.PinchToZoomOptions
+    let isDebugMode: Bool
 
-    @Binding var isRendering: Bool
-    @Binding var dimensions: Dimensions?
-
-    let trackDelegateReceiver: TrackDelegateReceiver
     let videoViewDelegateReceiver: VideoViewDelegateReceiver
 
     public init(_ track: VideoTrack,
                 layoutMode: VideoView.LayoutMode = .fill,
                 mirrorMode: VideoView.MirrorMode = .auto,
-                debugMode: Bool = false,
-                isRendering: Binding<Bool> = .constant(false),
-                dimensions: Binding<Dimensions?> = .constant(nil),
-                trackStats: Binding<TrackStats?> = .constant(nil)) {
-
+                renderMode: VideoView.RenderMode = .auto,
+                rotationOverride: VideoRotation? = nil,
+                pinchToZoomOptions: VideoView.PinchToZoomOptions = [],
+                isDebugMode: Bool = false,
+                isRendering: Binding<Bool>? = nil)
+    {
         self.track = track
         self.layoutMode = layoutMode
         self.mirrorMode = mirrorMode
-        self.debugMode = debugMode
+        self.renderMode = renderMode
+        self.rotationOverride = rotationOverride
+        self.isDebugMode = isDebugMode
+        self.pinchToZoomOptions = pinchToZoomOptions
 
-        self._isRendering = isRendering
-        self._dimensions = dimensions
-
-        self.trackDelegateReceiver = TrackDelegateReceiver(dimensions: dimensions,
-                                                           stats: trackStats)
-
-        self.videoViewDelegateReceiver = VideoViewDelegateReceiver(isRendering: isRendering)
-
-        // update binding value
-        Task.detached { @MainActor in
-            dimensions.wrappedValue = track.dimensions
-            trackStats.wrappedValue = track.stats
-        }
-
-        // listen for TrackDelegate
-        track.add(delegate: trackDelegateReceiver)
+        videoViewDelegateReceiver = VideoViewDelegateReceiver(isRendering: isRendering)
     }
 
     public func makeView(context: Context) -> VideoView {
         let view = VideoView()
-        view.add(delegate: videoViewDelegateReceiver)
         updateView(view, context: context)
         return view
     }
 
-    public func updateView(_ videoView: VideoView, context: Context) {
+    public func updateView(_ videoView: VideoView, context _: Context) {
         videoView.track = track
         videoView.layoutMode = layoutMode
         videoView.mirrorMode = mirrorMode
-        videoView.debugMode = debugMode
+        videoView.renderMode = renderMode
+        videoView.rotationOverride = rotationOverride
+        videoView.pinchToZoomOptions = pinchToZoomOptions
+        videoView.isDebugMode = isDebugMode
 
-        // update
         Task.detached { @MainActor in
-            self.isRendering = videoView.isRendering
+            videoView.add(delegate: videoViewDelegateReceiver)
+            videoViewDelegateReceiver.isRendering = videoView.isRendering
         }
     }
 
-    public static func dismantleView(_ videoView: VideoView, coordinator: ()) {
+    public static func dismantleView(_ videoView: VideoView, coordinator _: ()) {
         videoView.track = nil
+    }
+}
+
+/// This class receives ``VideoViewDelegate`` events since a struct can't be used for a delegate
+class VideoViewDelegateReceiver: VideoViewDelegate, Loggable {
+    @Binding var isRendering: Bool
+
+    init(isRendering: Binding<Bool>?) {
+        if let isRendering {
+            _isRendering = isRendering
+        } else {
+            _isRendering = .constant(false)
+        }
+    }
+
+    func videoView(_: VideoView, didUpdate isRendering: Bool) {
+        DispatchQueue.main.async {
+            self.isRendering = isRendering
+        }
     }
 }
