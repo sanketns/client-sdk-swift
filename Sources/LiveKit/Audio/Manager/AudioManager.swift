@@ -105,7 +105,7 @@ public class AudioManager: Loggable {
         // Keep this var within State so it's protected by UnfairLock
         public var localTracksCount: Int = 0
         public var remoteTracksCount: Int = 0
-        public var isSpeakerOutputPreferred: Bool = true
+        public var isSpeakerOutputPreferred: Bool = false
         public var customConfigureFunc: ConfigureAudioSessionFunc?
         public var sessionConfiguration: AudioSessionConfiguration?
 
