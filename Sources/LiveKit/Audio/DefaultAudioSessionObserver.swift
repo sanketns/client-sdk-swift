@@ -63,11 +63,6 @@ public class DefaultAudioSessionObserver: AudioEngineObserver, Loggable, @unchec
             log("Configuring audio session...")
             let session = LKRTCAudioSession.sharedInstance()
             session.lockForConfiguration()
-             do {
-                 try session.overrideOutputAudioPort(.speaker)
-             } catch let error as NSError {
-                 print("audioSession error: \(error.localizedDescription)")
-             }
             defer { session.unlockForConfiguration() }
 
             if _state.isSessionActive {
