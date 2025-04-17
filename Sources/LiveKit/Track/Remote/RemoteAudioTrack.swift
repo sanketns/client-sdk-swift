@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ internal import LiveKitWebRTC
 #endif
 
 @objc
-public class RemoteAudioTrack: Track, RemoteTrack, AudioTrack {
+public class RemoteAudioTrack: Track, RemoteTrack, AudioTrack, @unchecked Sendable {
     /// Volume with range 0.0 - 1.0
     public var volume: Double {
         get {
@@ -74,15 +74,5 @@ public class RemoteAudioTrack: Track, RemoteTrack, AudioTrack {
             guard let audioTrack = mediaTrack as? LKRTCAudioTrack else { return }
             audioTrack.remove(_adapter)
         }
-    }
-
-    // MARK: - Internal
-
-    override func startCapture() async throws {
-        try await AudioManager.shared.trackDidStart(.remote)
-    }
-
-    override func stopCapture() async throws {
-        try await AudioManager.shared.trackDidStop(.remote)
     }
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -105,6 +105,18 @@ public extension Track {
     }
 }
 
+extension Track.Source: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .unknown: return "unknown"
+        case .camera: return "camera"
+        case .microphone: return "microphone"
+        case .screenShareVideo: return "screenShareVideo"
+        case .screenShareAudio: return "screenShareAudio"
+        }
+    }
+}
+
 extension RTCPeerConnectionState {
     var description: String {
         switch self {
@@ -176,5 +188,16 @@ extension AVCaptureDevice.Format {
         values.append("isMulticamSupported: \(isMultiCamSupported)")
         #endif
         return "Format(\(values.joined(separator: ", ")))"
+    }
+}
+
+extension LKRTCAudioProcessingConfig {
+    func toDebugString() -> String {
+        "RTCAudioProcessingConfig(" +
+            "isEchoCancellationEnabled: \(isEchoCancellationEnabled), " +
+            "isNoiseSuppressionEnabled: \(isNoiseSuppressionEnabled), " +
+            "isAutoGainControl1Enabled: \(isAutoGainControl1Enabled), " +
+            "isHighpassFilterEnabled: \(isHighpassFilterEnabled)" +
+            ")"
     }
 }

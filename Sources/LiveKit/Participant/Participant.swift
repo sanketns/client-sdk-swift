@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,7 @@ internal import LiveKitWebRTC
 #endif
 
 @objc
-public class Participant: NSObject, ObservableObject, Loggable {
+public class Participant: NSObject, @unchecked Sendable, ObservableObject, Loggable {
     // MARK: - MulticastDelegate
 
     public let delegates = MulticastDelegate<ParticipantDelegate>(label: "ParticipantDelegate")
@@ -90,7 +90,7 @@ public class Participant: NSObject, ObservableObject, Loggable {
 
     // MARK: - Internal
 
-    struct State: Equatable, Hashable {
+    struct State: Equatable, Hashable, Sendable {
         var sid: Sid?
         var identity: Identity?
         var name: String?
@@ -105,7 +105,14 @@ public class Participant: NSObject, ObservableObject, Loggable {
         var attributes = [String: String]()
     }
 
+    struct InternalState: Equatable, Hashable {
+        var enabledPublishVideoCodecs: [VideoCodec] = []
+    }
+
     let _state: StateSync<State>
+
+    // States that do not require `objectWillChange` for Swift UI.
+    let _internalState = StateSync(InternalState())
 
     let _publishSerialRunner = SerialRunnerActor<LocalTrackPublication?>()
 
@@ -179,7 +186,7 @@ public class Participant: NSObject, ObservableObject, Loggable {
             }
 
             // Notify when state mutates
-            Task.detached { @MainActor in
+            Task { @MainActor in
                 // Notify Participant
                 self.objectWillChange.send()
                 if let room = self._room {
@@ -219,13 +226,26 @@ public class Participant: NSObject, ObservableObject, Loggable {
             $0.identity = Identity(from: info.identity)
             $0.name = info.name
             $0.metadata = info.metadata
-            $0.joinedAt = Date(timeIntervalSince1970: TimeInterval(info.joinedAt))
             $0.kind = info.kind.toLKType()
             $0.attributes = info.attributes
+
+            // Attempt to get millisecond precision.
+            if info.joinedAtMs != 0 {
+                $0.joinedAt = Date(timeIntervalSince1970: TimeInterval(Double(info.joinedAtMs) / 1000))
+            } else if info.joinedAt != 0 {
+                $0.joinedAt = Date(timeIntervalSince1970: TimeInterval(info.joinedAt))
+            }
         }
 
         self.info = info
         set(permissions: info.permission.toLKType())
+    }
+
+    func set(enabledPublishCodecs codecs: [Livekit_Codec]) {
+        log("enabledPublishCodecs: \(codecs.map(\.mime).joined(separator: ", "))")
+        _internalState.mutate {
+            $0.enabledPublishVideoCodecs = codecs.map { VideoCodec.from(mimeType: $0.mime) }.compactMap { $0 }
+        }
     }
 
     @discardableResult

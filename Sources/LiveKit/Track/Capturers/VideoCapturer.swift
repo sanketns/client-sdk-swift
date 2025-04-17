@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,12 +14,17 @@
  * limitations under the License.
  */
 
+@preconcurrency import AVFoundation
 import Foundation
 
 #if swift(>=5.9)
 internal import LiveKitWebRTC
 #else
 @_implementationOnly import LiveKitWebRTC
+#endif
+
+#if canImport(ReplayKit)
+import ReplayKit
 #endif
 
 protocol VideoCapturerProtocol {
@@ -31,7 +36,7 @@ extension VideoCapturerProtocol {
 }
 
 @objc
-public protocol VideoCapturerDelegate: AnyObject {
+public protocol VideoCapturerDelegate: AnyObject, Sendable {
     @objc(capturer:didUpdateDimensions:) optional
     func capturer(_ capturer: VideoCapturer, didUpdate dimensions: Dimensions?)
 
@@ -40,11 +45,13 @@ public protocol VideoCapturerDelegate: AnyObject {
 }
 
 // Intended to be a base class for video capturers
-public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
+public class VideoCapturer: NSObject, @unchecked Sendable, Loggable, VideoCapturerProtocol {
     // MARK: - MulticastDelegate
 
     public let delegates = MulticastDelegate<VideoCapturerDelegate>(label: "VideoCapturerDelegate")
     public let rendererDelegates = MulticastDelegate<VideoRenderer>(label: "VideoCapturerRendererDelegate")
+
+    private let processingQueue = DispatchQueue(label: "io.livekit.videocapturer.processing")
 
     /// Array of supported pixel formats that can be used to capture a frame.
     ///
@@ -70,15 +77,22 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
 
     let dimensionsCompleter = AsyncCompleter<Dimensions>(label: "Dimensions", defaultTimeout: .defaultCaptureStart)
 
-    struct State: Equatable {
+    struct State {
         // Counts calls to start/stopCapturer so multiple Tracks can use the same VideoCapturer.
         var startStopCounter: Int = 0
         var dimensions: Dimensions? = nil
+        weak var processor: VideoProcessor? = nil
+        var isFrameProcessingBusy: Bool = false
     }
 
-    var _state = StateSync(State())
+    let _state: StateSync<State>
 
     public var dimensions: Dimensions? { _state.dimensions }
+
+    public weak var processor: VideoProcessor? {
+        get { _state.processor }
+        set { _state.mutate { $0.processor = newValue } }
+    }
 
     func set(dimensions newValue: Dimensions?) {
         let didUpdate = _state.mutate {
@@ -103,8 +117,9 @@ public class VideoCapturer: NSObject, Loggable, VideoCapturerProtocol {
         _state.startStopCounter == 0 ? .stopped : .started
     }
 
-    init(delegate: LKRTCVideoCapturerDelegate) {
+    init(delegate: LKRTCVideoCapturerDelegate, processor: VideoProcessor? = nil) {
         self.delegate = delegate
+        _state = StateSync(State(processor: processor))
         super.init()
 
         _state.onDidMutate = { [weak self] newState, oldState in
@@ -192,17 +207,10 @@ extension VideoCapturer {
                  device: AVCaptureDevice? = nil,
                  options: VideoCaptureOptions)
     {
-        _processFrame(frame, capturer: capturer, device: device, options: options)
-    }
-
-    // Capture a CMSampleBuffer
-    func capture(sampleBuffer: CMSampleBuffer,
-                 capturer: LKRTCVideoCapturer,
-                 options: VideoCaptureOptions)
-    {
-        delegate?.capturer(capturer, didCapture: sampleBuffer) { [weak self] frame in
-            self?._processFrame(frame, capturer: capturer, device: nil, options: options)
-        }
+        _process(frame: frame,
+                 capturer: capturer,
+                 device: device,
+                 options: options)
     }
 
     // Capture a CVPixelBuffer
@@ -212,27 +220,123 @@ extension VideoCapturer {
                  rotation: VideoRotation = ._0,
                  options: VideoCaptureOptions)
     {
-        delegate?.capturer(capturer, didCapture: pixelBuffer, timeStampNs: timeStampNs, rotation: rotation.toRTCType()) { [weak self] frame in
-            self?._processFrame(frame, capturer: capturer, device: nil, options: options)
+        // check if pixel format is supported by WebRTC
+        let pixelFormat = CVPixelBufferGetPixelFormatType(pixelBuffer)
+        guard VideoCapturer.supportedPixelFormats.contains(where: { $0.uint32Value == pixelFormat }) else {
+            // kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+            // kCVPixelFormatType_420YpCbCr8BiPlanarFullRange
+            // kCVPixelFormatType_32BGRA
+            // kCVPixelFormatType_32ARGB
+            logger.log("Skipping capture for unsupported pixel format: \(pixelFormat.toString())", .warning,
+                       type: type(of: self))
+            return
         }
+
+        let sourceDimensions = Dimensions(width: Int32(CVPixelBufferGetWidth(pixelBuffer)),
+                                          height: Int32(CVPixelBufferGetHeight(pixelBuffer)))
+
+        guard sourceDimensions.isEncodeSafe else {
+            logger.log("Skipping capture for dimensions: \(sourceDimensions)", .warning,
+                       type: type(of: self))
+            return
+        }
+
+        let rtcBuffer = LKRTCCVPixelBuffer(pixelBuffer: pixelBuffer)
+        let rtcFrame = LKRTCVideoFrame(buffer: rtcBuffer,
+                                       rotation: rotation.toRTCType(),
+                                       timeStampNs: timeStampNs)
+
+        capture(frame: rtcFrame,
+                capturer: capturer,
+                options: options)
+    }
+
+    // Capture a CMSampleBuffer
+    func capture(sampleBuffer: CMSampleBuffer,
+                 capturer: LKRTCVideoCapturer,
+                 options: VideoCaptureOptions)
+    {
+        // Check if buffer is ready
+        guard CMSampleBufferGetNumSamples(sampleBuffer) == 1,
+              CMSampleBufferIsValid(sampleBuffer),
+              CMSampleBufferDataIsReady(sampleBuffer)
+        else {
+            logger.log("Failed to capture, buffer is not ready", .warning, type: type(of: self))
+            return
+        }
+
+        // attempt to determine rotation information if buffer is coming from ReplayKit
+        var rotation: RTCVideoRotation?
+        if #available(macOS 11.0, *) {
+            // Check rotation tags. Extensions see these tags, but `RPScreenRecorder` does not appear to set them.
+            // On iOS 12.0 and 13.0 rotation tags (other than up) are set by extensions.
+            if let sampleOrientation = CMGetAttachment(sampleBuffer, key: RPVideoSampleOrientationKey as CFString, attachmentModeOut: nil),
+               let coreSampleOrientation = sampleOrientation.uint32Value
+            {
+                rotation = CGImagePropertyOrientation(rawValue: coreSampleOrientation)?.toRTCRotation()
+            }
+        }
+
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            logger.log("Failed to capture, pixel buffer not found", .warning, type: type(of: self))
+            return
+        }
+
+        let timeStamp = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        let timeStampNs = Int64(CMTimeGetSeconds(timeStamp) * Double(NSEC_PER_SEC))
+
+        capture(pixelBuffer: pixelBuffer,
+                capturer: capturer,
+                timeStampNs: timeStampNs,
+                rotation: rotation?.toLKType() ?? ._0,
+                options: options)
     }
 
     // Process the captured frame
-    private func _processFrame(_ frame: LKRTCVideoFrame,
-                               capturer: LKRTCVideoCapturer,
-                               device: AVCaptureDevice?,
-                               options: VideoCaptureOptions)
+    private func _process(frame: LKRTCVideoFrame,
+                          capturer: LKRTCVideoCapturer,
+                          device: AVCaptureDevice?,
+                          options: VideoCaptureOptions)
     {
-        // Resolve real dimensions (apply frame rotation)
-        set(dimensions: Dimensions(width: frame.width, height: frame.height).apply(rotation: frame.rotation))
+        if _state.isFrameProcessingBusy {
+            log("Frame processing hasn't completed yet, skipping frame...", .warning)
+            return
+        }
 
-        delegate?.capturer(capturer, didCapture: frame)
+        processingQueue.async { [weak self] in
+            guard let self else { return }
 
-        if rendererDelegates.isDelegatesNotEmpty {
-            if let lkVideoFrame = frame.toLKType() {
-                rendererDelegates.notify { renderer in
-                    renderer.render?(frame: lkVideoFrame)
-                    renderer.render?(frame: lkVideoFrame, captureDevice: device, captureOptions: options)
+            // Mark as frame processing busy.
+            self._state.mutate { $0.isFrameProcessingBusy = true }
+            defer {
+                self._state.mutate { $0.isFrameProcessingBusy = false }
+            }
+
+            var rtcFrame: LKRTCVideoFrame = frame
+            guard var lkFrame: VideoFrame = frame.toLKType() else {
+                self.log("Failed to convert a RTCVideoFrame to VideoFrame.", .error)
+                return
+            }
+
+            // Apply processing if we have a processor attached.
+            if let processor = self._state.processor {
+                guard let processedFrame = processor.process(frame: lkFrame) else {
+                    self.log("VideoProcessor didn't return a frame, skipping frame.", .warning)
+                    return
+                }
+                lkFrame = processedFrame
+                rtcFrame = processedFrame.toRTCType()
+            }
+
+            // Resolve real dimensions (apply frame rotation)
+            self.set(dimensions: Dimensions(width: rtcFrame.width, height: rtcFrame.height).apply(rotation: rtcFrame.rotation))
+
+            self.delegate?.capturer(capturer, didCapture: rtcFrame)
+
+            if self.rendererDelegates.isDelegatesNotEmpty {
+                self.rendererDelegates.notify { [lkFrame] renderer in
+                    renderer.render?(frame: lkFrame)
+                    renderer.render?(frame: lkFrame, captureDevice: device, captureOptions: options)
                 }
             }
         }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 import Foundation
 
 @objc
-public enum ConnectionQuality: Int {
+public enum ConnectionQuality: Int, Sendable {
     case unknown
     /// Indicates that a participant has temporarily (or permanently) lost connection to LiveKit.
     /// For permanent disconnection, ``RoomDelegate/room(_:participantDidLeave:)`` will be invoked after a timeout.

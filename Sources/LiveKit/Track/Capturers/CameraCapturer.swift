@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+@preconcurrency import AVFoundation
 import Foundation
 
 #if canImport(ReplayKit)
@@ -26,7 +27,7 @@ internal import LiveKitWebRTC
 @_implementationOnly import LiveKitWebRTC
 #endif
 
-public class CameraCapturer: VideoCapturer {
+public class CameraCapturer: VideoCapturer, @unchecked Sendable {
     /// Current device used for capturing
     @objc
     public var device: AVCaptureDevice? { _cameraCapturerState.device }
@@ -96,9 +97,12 @@ public class CameraCapturer: VideoCapturer {
     // RTCCameraVideoCapturer used internally for now
     private lazy var capturer: LKRTCCameraVideoCapturer = .init(delegate: adapter)
 
-    init(delegate: LKRTCVideoCapturerDelegate, options: CameraCaptureOptions) {
+    init(delegate: LKRTCVideoCapturerDelegate,
+         options: CameraCaptureOptions,
+         processor: VideoProcessor? = nil)
+    {
         _cameraCapturerState = StateSync(State(options: options))
-        super.init(delegate: delegate)
+        super.init(delegate: delegate, processor: processor)
 
         log("isMultitaskingAccessSupported: \(isMultitaskingAccessSupported)", .info)
     }
@@ -293,10 +297,13 @@ public extension LocalVideoTrack {
     @objc
     static func createCameraTrack(name: String? = nil,
                                   options: CameraCaptureOptions? = nil,
-                                  reportStatistics: Bool = false) -> LocalVideoTrack
+                                  reportStatistics: Bool = false,
+                                  processor: VideoProcessor? = nil) -> LocalVideoTrack
     {
         let videoSource = RTC.createVideoSource(forScreenShare: false)
-        let capturer = CameraCapturer(delegate: videoSource, options: options ?? CameraCaptureOptions())
+        let capturer = CameraCapturer(delegate: videoSource,
+                                      options: options ?? CameraCaptureOptions(),
+                                      processor: processor)
         return LocalVideoTrack(name: name ?? Track.cameraName,
                                source: .camera,
                                capturer: capturer,
@@ -305,7 +312,7 @@ public extension LocalVideoTrack {
     }
 }
 
-extension AVCaptureDevice.Position: CustomStringConvertible {
+extension AVCaptureDevice.Position: Swift.CustomStringConvertible {
     public var description: String {
         switch self {
         case .front: return ".front"

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,11 +17,7 @@
 @testable import LiveKit
 import XCTest
 
-class VideoViewTests: XCTestCase {
-    override class func setUp() {
-        LiveKitSDK.setLoggerStandardOutput()
-    }
-
+class VideoViewTests: LKTestCase {
     /// Test if avSampleBufferDisplayLayer is available immediately after creating VideoView.
     @MainActor
     func testAVSampleBufferDisplayLayer() {

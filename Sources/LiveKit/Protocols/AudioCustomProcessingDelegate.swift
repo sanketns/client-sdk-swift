@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+@preconcurrency import AVFoundation
 import Foundation
 
 #if swift(>=5.9)
@@ -24,22 +25,29 @@ internal import LiveKitWebRTC
 
 public let kLiveKitKrispAudioProcessorName = "livekit_krisp_noise_cancellation"
 
+/// Used to modify audio buffers before they are sent to the network or played to the user
 @objc
-public protocol AudioCustomProcessingDelegate {
+public protocol AudioCustomProcessingDelegate: Sendable {
+    /// An optional identifier for the audio processor implementation.
+    /// This can be used to identify different types of audio processing (e.g. noise cancellation).
+    /// Generally you can leave this as the default value.
     @objc optional
     var audioProcessingName: String { get }
 
+    /// Provides the sample rate and number of channels to configure your delegate for processing
     @objc
     func audioProcessingInitialize(sampleRate sampleRateHz: Int, channels: Int)
 
+    /// Provides a chunk of audio data that can be modified in place
     @objc
     func audioProcessingProcess(audioBuffer: LKAudioBuffer)
 
+    /// Called when the audio processing is no longer needed so it may clean up any resources
     @objc
     func audioProcessingRelease()
 }
 
-class AudioCustomProcessingDelegateAdapter: MulticastDelegate<AudioRenderer>, LKRTCAudioCustomProcessingDelegate {
+class AudioCustomProcessingDelegateAdapter: MulticastDelegate<AudioRenderer>, @unchecked Sendable, LKRTCAudioCustomProcessingDelegate {
     // MARK: - Public
 
     public var target: AudioCustomProcessingDelegate? { _state.target }

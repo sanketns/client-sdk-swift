@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,10 +21,14 @@ import Network
 #endif
 
 @objc
-public class Room: NSObject, ObservableObject, Loggable {
+public class Room: NSObject, @unchecked Sendable, ObservableObject, Loggable {
     // MARK: - MulticastDelegate
 
     public let delegates = MulticastDelegate<RoomDelegate>(label: "RoomDelegate")
+
+    // MARK: - Metrics
+
+    private lazy var metricsManager = MetricsManager()
 
     // MARK: - Public
 
@@ -61,6 +65,9 @@ public class Room: NSObject, ObservableObject, Loggable {
 
     @objc
     public var activeSpeakers: [Participant] { _state.activeSpeakers }
+
+    @objc
+    public var creationTime: Date? { _state.creationTime }
 
     /// If the current room has a participant with `recorder:true` in its JWT grant.
     @objc
@@ -108,12 +115,29 @@ public class Room: NSObject, ObservableObject, Loggable {
     lazy var subscriberDataChannel = DataChannelPair(delegate: self)
     lazy var publisherDataChannel = DataChannelPair(delegate: self)
 
+    lazy var incomingStreamManager = IncomingStreamManager()
+    lazy var outgoingStreamManager = OutgoingStreamManager { [weak self] packet in
+        try await self?.send(dataPacket: packet)
+    }
+
+    // MARK: - PreConnect
+
+    lazy var preConnectBuffer = PreConnectAudioBuffer(room: self)
+
+    // MARK: - Queue
+
     var _blockProcessQueue = DispatchQueue(label: "LiveKitSDK.engine.pendingBlocks",
                                            qos: .default)
 
     var _queuedBlocks = [ConditionalExecutionEntry]()
 
-    struct State: Equatable {
+    // MARK: - RPC
+
+    let rpcState = RpcStateManager()
+
+    // MARK: - State
+
+    struct State: Equatable, Sendable {
         // Options
         var connectOptions: ConnectOptions
         var roomOptions: RoomOptions
@@ -125,6 +149,7 @@ public class Room: NSObject, ObservableObject, Loggable {
         var remoteParticipants = [Participant.Identity: RemoteParticipant]()
         var activeSpeakers = [Participant]()
 
+        var creationTime: Date?
         var isRecording: Bool = false
 
         var maxParticipants: Int = 0
@@ -186,7 +211,9 @@ public class Room: NSObject, ObservableObject, Loggable {
                 connectOptions: ConnectOptions? = nil,
                 roomOptions: RoomOptions? = nil)
     {
+        // Ensure manager shared objects are instantiated
         DeviceManager.prepare()
+        AudioManager.prepare()
 
         _state = StateSync(State(connectOptions: connectOptions ?? ConnectOptions(),
                                  roomOptions: roomOptions ?? RoomOptions()))
@@ -205,7 +232,13 @@ public class Room: NSObject, ObservableObject, Loggable {
         }
 
         // listen to app states
-        AppStateListener.shared.delegates.add(delegate: self)
+        Task { @MainActor in
+            AppStateListener.shared.delegates.add(delegate: self)
+        }
+
+        Task {
+            await metricsManager.register(room: self)
+        }
 
         // trigger events when state mutates
         _state.onDidMutate = { [weak self] newState, oldState in
@@ -267,7 +300,7 @@ public class Room: NSObject, ObservableObject, Loggable {
             }
 
             // Notify Room when state mutates
-            Task.detached { @MainActor in
+            Task { @MainActor in
                 self.objectWillChange.send()
             }
         }
@@ -378,6 +411,10 @@ extension Room {
         // Cleanup for E2EE
         if let e2eeManager {
             e2eeManager.cleanUp()
+        }
+
+        if disconnectError != nil {
+            preConnectBuffer.stopRecording(flush: true)
         }
 
         // Reset state
@@ -514,11 +551,11 @@ extension Room: AppStateDelegate {
 
 public extension Room {
     /// Set this to true to bypass initialization of voice processing.
-    /// Must be set before RTCPeerConnectionFactory gets initialized.
+    @available(*, deprecated, renamed: "AudioManager.shared.isVoiceProcessingBypassed")
     @objc
     static var bypassVoiceProcessing: Bool {
-        get { RTC.bypassVoiceProcessing }
-        set { RTC.bypassVoiceProcessing = newValue }
+        get { AudioManager.shared.isVoiceProcessingBypassed }
+        set { AudioManager.shared.isVoiceProcessingBypassed = newValue }
     }
 }
 
@@ -530,6 +567,12 @@ extension Room: DataChannelDelegate {
         case let .speaker(update): engine(self, didUpdateSpeakers: update.speakers)
         case let .user(userPacket): engine(self, didReceiveUserPacket: userPacket)
         case let .transcription(packet): room(didReceiveTranscriptionPacket: packet)
+        case let .rpcResponse(response): room(didReceiveRpcResponse: response)
+        case let .rpcAck(ack): room(didReceiveRpcAck: ack)
+        case let .rpcRequest(request): room(didReceiveRpcRequest: request, from: dataPacket.participantIdentity)
+        case let .streamHeader(header): Task { await incomingStreamManager.handle(header: header, from: dataPacket.participantIdentity) }
+        case let .streamChunk(chunk): Task { await incomingStreamManager.handle(chunk: chunk) }
+        case let .streamTrailer(trailer): Task { await incomingStreamManager.handle(trailer: trailer) }
         default: return
         }
     }

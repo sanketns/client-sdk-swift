@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,7 @@
 import Foundation
 
 /// Manages a map of AsyncCompleters
-actor CompleterMapActor<T> {
+actor CompleterMapActor<T: Sendable> {
     // MARK: - Public
 
     public nonisolated let label: String
@@ -63,7 +63,7 @@ actor CompleterMapActor<T> {
     }
 }
 
-class AsyncCompleter<T>: Loggable {
+final class AsyncCompleter<T: Sendable>: @unchecked Sendable, Loggable {
     //
     struct WaitEntry {
         let continuation: UnsafeContinuation<T, Error>
@@ -94,7 +94,7 @@ class AsyncCompleter<T>: Loggable {
     private var _entries: [UUID: WaitEntry] = [:]
     private var _result: Result<T, Error>?
 
-    private let _lock = UnfairLock()
+    private let _lock: some Lock = createLock()
 
     public init(label: String, defaultTimeout: TimeInterval) {
         self.label = label
@@ -147,7 +147,6 @@ class AsyncCompleter<T>: Loggable {
             // Already resolved...
             if case let .success(value) = result {
                 // resume(returning:) already called
-                log("\(label) returning existing value")
                 return value
             } else if case let .failure(error) = result {
                 // resume(throwing:) already called

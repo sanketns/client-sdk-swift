@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,7 +27,7 @@ internal import LiveKitWebRTC
 #endif
 
 @available(macOS 11.0, iOS 11.0, *)
-public class InAppScreenCapturer: VideoCapturer {
+public class InAppScreenCapturer: VideoCapturer, @unchecked Sendable {
     private let capturer = RTC.createVideoCapturer()
     private let options: ScreenShareCaptureOptions
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,7 +24,7 @@ internal import LiveKitWebRTC
 #endif
 
 @objc
-public class LocalAudioTrack: Track, LocalTrack, AudioTrack {
+public class LocalAudioTrack: Track, LocalTrack, AudioTrack, @unchecked Sendable {
     /// ``AudioCaptureOptions`` used to create this track.
     let captureOptions: AudioCaptureOptions
 
@@ -82,11 +82,16 @@ public class LocalAudioTrack: Track, LocalTrack, AudioTrack {
     // MARK: - Internal
 
     override func startCapture() async throws {
-        try await AudioManager.shared.trackDidStart(.local)
-    }
-
-    override func stopCapture() async throws {
-        try await AudioManager.shared.trackDidStop(.local)
+        // AudioDeviceModule's InitRecording() and StartRecording() automatically get called by WebRTC, but
+        // explicitly init & start it early to detect audio engine failures (mic not accessible for some reason, etc.).
+        do {
+            try AudioManager.shared.startLocalRecording()
+        } catch {
+            // Make sure internal state is updated to stopped state. (TODO: Remove if ADM reverts state automatically)
+            try? AudioManager.shared.stopLocalRecording()
+            // Rethrow
+            throw error
+        }
     }
 }
 

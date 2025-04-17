@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,21 +21,24 @@ struct RoomTestingOptions {
     let delegate: RoomDelegate?
     let canPublish: Bool
     let canPublishData: Bool
+    let canPublishSources: Set<Track.Source>
     let canSubscribe: Bool
 
     init(delegate: RoomDelegate? = nil,
          canPublish: Bool = false,
          canPublishData: Bool = false,
+         canPublishSources: Set<Track.Source> = [],
          canSubscribe: Bool = false)
     {
         self.delegate = delegate
         self.canPublish = canPublish
         self.canPublishData = canPublishData
+        self.canPublishSources = canPublishSources
         self.canSubscribe = canSubscribe
     }
 }
 
-extension XCTestCase {
+extension LKTestCase {
     private func readEnvironmentString(for key: String, defaultValue: String) -> String {
         if let string = ProcessInfo.processInfo.environment[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !string.isEmpty {
             return string
@@ -52,6 +55,7 @@ extension XCTestCase {
                             identity: String,
                             canPublish: Bool,
                             canPublishData: Bool,
+                            canPublishSources: Set<Track.Source>,
                             canSubscribe: Bool) throws -> String
     {
         let apiKey = readEnvironmentString(for: "LIVEKIT_TESTING_API_KEY", defaultValue: "devkey")
@@ -65,7 +69,8 @@ extension XCTestCase {
                                                roomJoin: true,
                                                canPublish: canPublish,
                                                canSubscribe: canSubscribe,
-                                               canPublishData: canPublishData)
+                                               canPublishData: canPublishData,
+                                               canPublishSources: canPublishSources.map(String.init))
         return try tokenGenerator.sign()
     }
 
@@ -92,6 +97,7 @@ extension XCTestCase {
                                                identity: identity,
                                                canPublish: $0.element.canPublish,
                                                canPublishData: $0.element.canPublishData,
+                                               canPublishSources: $0.element.canPublishSources,
                                                canSubscribe: $0.element.canSubscribe)
             print("Token: \(token) for room: \(roomName)")
 
@@ -114,6 +120,7 @@ extension XCTestCase {
                                                    identity: "observer",
                                                    canPublish: true,
                                                    canPublishData: true,
+                                                   canPublishSources: [],
                                                    canSubscribe: true)
 
         print("Observer token: \(observerToken) for room: \(roomName)")
@@ -182,7 +189,7 @@ extension Room {
     }
 }
 
-class RoomWatcher<T: Decodable>: RoomDelegate {
+final class RoomWatcher<T: Decodable & Sendable>: RoomDelegate, Sendable {
     public let id: String
     public let didReceiveDataCompleters = CompleterMapActor<T>(label: "Data receive completer", defaultTimeout: 10)
 

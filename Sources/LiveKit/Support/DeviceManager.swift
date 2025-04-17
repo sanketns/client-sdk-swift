@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,17 +14,13 @@
  * limitations under the License.
  */
 
-import AVFoundation
+@preconcurrency import AVFoundation
 
 // Internal-only for now
-class DeviceManager: Loggable {
+class DeviceManager: @unchecked Sendable, Loggable {
     // MARK: - Public
 
-    #if compiler(>=6.0)
-    public nonisolated(unsafe) static let shared = DeviceManager()
-    #else
     public static let shared = DeviceManager()
-    #endif
 
     public static func prepare() {
         // Instantiate shared instance

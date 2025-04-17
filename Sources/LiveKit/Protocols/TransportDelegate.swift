@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,7 +20,7 @@ internal import LiveKitWebRTC
 @_implementationOnly import LiveKitWebRTC
 #endif
 
-protocol TransportDelegate: AnyObject {
+protocol TransportDelegate: AnyObject, Sendable {
     func transport(_ transport: Transport, didUpdateState state: RTCPeerConnectionState)
     func transport(_ transport: Transport, didGenerateIceCandidate iceCandidate: IceCandidate)
     func transport(_ transport: Transport, didOpenDataChannel dataChannel: LKRTCDataChannel)

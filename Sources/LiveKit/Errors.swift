@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ public enum LiveKitErrorType: Int, Sendable {
     case failedToParseUrl = 102
     case failedToConvertData = 103
     case invalidState = 104
+    case invalidParameter = 105
 
     case webRTC = 201
 
@@ -41,6 +42,7 @@ public enum LiveKitErrorType: Int, Sendable {
     case roomDeleted = 503
     case stateMismatch = 504
     case joinFailure = 505
+    case insufficientPermissions = 506
 
     //
     case serverPingTimedOut = 601
@@ -51,6 +53,12 @@ public enum LiveKitErrorType: Int, Sendable {
     case unableToResolveFPSRange = 703
     case capturerDimensionsNotResolved = 704
     case deviceAccessDenied = 705
+
+    // Audio
+    case audioEngine = 801
+    case audioSession = 802
+
+    case codecNotSupported = 901
 }
 
 extension LiveKitErrorType: CustomStringConvertible {
@@ -66,6 +74,8 @@ extension LiveKitErrorType: CustomStringConvertible {
             return "Failed to convert data"
         case .invalidState:
             return "Invalid state"
+        case .invalidParameter:
+            return "Invalid parameter"
         case .webRTC:
             return "WebRTC error"
         case .network:
@@ -92,6 +102,10 @@ extension LiveKitErrorType: CustomStringConvertible {
             return "Unable to resolve FPS range"
         case .capturerDimensionsNotResolved:
             return "Capturer dimensions not resolved"
+        case .audioEngine:
+            return "Audio Engine Error"
+        case .audioSession:
+            return "Audio Session Error"
         default: return "Unknown"
         }
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import Combine
 import Foundation
 
 @objc
-public class LocalTrackPublication: TrackPublication {
+public class LocalTrackPublication: TrackPublication, @unchecked Sendable {
     // indicates whether the track was suspended(muted) by the SDK
     var _suspended: Bool = false
 

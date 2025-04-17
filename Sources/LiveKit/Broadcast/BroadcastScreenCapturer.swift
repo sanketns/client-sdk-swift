@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,20 +28,14 @@ internal import LiveKitWebRTC
 @_implementationOnly import LiveKitWebRTC
 #endif
 
-class BroadcastScreenCapturer: BufferCapturer {
-    static let kRTCScreensharingSocketFD = "rtc_SSFD"
-    static let kAppGroupIdentifierKey = "RTCAppGroupIdentifier"
-    static let kRTCScreenSharingExtension = "RTCScreenSharingExtension"
-
-    var frameReader: SocketConnectionFrameReader?
+class BroadcastScreenCapturer: BufferCapturer, @unchecked Sendable {
+    private let appAudio: Bool
+    private var receiver: BroadcastReceiver?
 
     override func startCapture() async throws -> Bool {
         let didStart = try await super.startCapture()
 
         guard didStart else { return false }
-
-        guard let identifier = lookUpAppGroupIdentifier(),
-              let filePath = filePathForIdentifier(identifier) else { return false }
 
         let bounds = await UIScreen.main.bounds
         let width = bounds.size.width
@@ -55,22 +49,37 @@ class BroadcastScreenCapturer: BufferCapturer {
             .toEncodeSafeDimensions()
 
         set(dimensions: targetDimensions)
+        return createReceiver()
+    }
 
-        let frameReader = SocketConnectionFrameReader()
-        guard let socketConnection = BroadcastServerSocketConnection(filePath: filePath, streamDelegate: frameReader)
-        else { return false }
-        frameReader.didCapture = { pixelBuffer, rotation in
-            self.capture(pixelBuffer, rotation: rotation.toLKType())
+    private func createReceiver() -> Bool {
+        guard let socketPath = BroadcastBundleInfo.socketPath else {
+            logger.error("Bundle settings improperly configured for screen capture")
+            return false
         }
-        frameReader.didEnd = { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
-            Task {
-                try await self.stopCapture()
-            }
-        }
-        frameReader.startCapture(with: socketConnection)
-        self.frameReader = frameReader
+            do {
+                let receiver = try await BroadcastReceiver(socketPath: socketPath)
+                logger.debug("Broadcast receiver connected")
+                self.receiver = receiver
 
+                if self.appAudio {
+                    try await receiver.enableAudio()
+                }
+
+                for try await sample in receiver.incomingSamples {
+                    switch sample {
+                    case let .image(buffer, rotation): self.capture(buffer, rotation: rotation)
+                    case let .audio(buffer): AudioManager.shared.mixer.capture(appAudio: buffer)
+                    }
+                }
+                logger.debug("Broadcast receiver closed")
+            } catch {
+                logger.error("Broadcast receiver error: \(error)")
+            }
+            _ = try? await self.stopCapture()
+        }
         return true
     }
 
@@ -79,22 +88,13 @@ class BroadcastScreenCapturer: BufferCapturer {
 
         // Already stopped
         guard didStop else { return false }
-
-        frameReader?.stopCapture()
-        frameReader = nil
+        receiver?.close()
         return true
     }
 
-    private func lookUpAppGroupIdentifier() -> String? {
-        Bundle.main.infoDictionary?[BroadcastScreenCapturer.kAppGroupIdentifierKey] as? String
-    }
-
-    private func filePathForIdentifier(_ identifier: String) -> String? {
-        guard let sharedContainer = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
-        else { return nil }
-
-        let filePath = sharedContainer.appendingPathComponent(BroadcastScreenCapturer.kRTCScreensharingSocketFD).path
-        return filePath
+    init(delegate: LKRTCVideoCapturerDelegate, options: ScreenShareCaptureOptions) {
+        appAudio = options.appAudio
+        super.init(delegate: delegate, options: BufferCaptureOptions(from: options))
     }
 }
 
@@ -106,7 +106,7 @@ public extension LocalVideoTrack {
                                                    reportStatistics: Bool = false) -> LocalVideoTrack
     {
         let videoSource = RTC.createVideoSource(forScreenShare: true)
-        let capturer = BroadcastScreenCapturer(delegate: videoSource, options: BufferCaptureOptions(from: options))
+        let capturer = BroadcastScreenCapturer(delegate: videoSource, options: options)
         return LocalVideoTrack(
             name: name,
             source: source,

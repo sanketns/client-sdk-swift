@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,7 +30,7 @@ internal import LiveKitWebRTC
 extension Room {
     // MARK: - Public
 
-    typealias ConditionEvalFunc = (_ newState: State, _ oldState: State?) -> Bool
+    typealias ConditionEvalFunc = @Sendable (_ newState: State, _ oldState: State?) -> Bool
 
     // MARK: - Private
 
@@ -69,6 +69,13 @@ extension Room {
     }
 
     func send(userPacket: Livekit_UserPacket, kind: Livekit_DataPacket.Kind) async throws {
+        try await send(dataPacket: .with {
+            $0.user = userPacket
+            $0.kind = kind
+        })
+    }
+
+    func send(dataPacket packet: Livekit_DataPacket) async throws {
         func ensurePublisherConnected() async throws {
             guard _state.isSubscriberPrimary else { return }
 
@@ -95,8 +102,12 @@ extension Room {
             log("publisher data channel is not .open", .error)
         }
 
-        // Should return true if successful
-        try publisherDataChannel.send(userPacket: userPacket, kind: kind)
+        var packet = packet
+        if let identity = localParticipant.identity?.stringValue {
+            packet.participantIdentity = identity
+        }
+
+        try await publisherDataChannel.send(dataPacket: packet)
     }
 }
 
@@ -177,7 +188,8 @@ extension Room {
                 $0.isSubscriberPrimary = isSubscriberPrimary
             }
 
-            if !isSubscriberPrimary {
+            log("[Connect] Fast publish enabled: \(joinResponse.fastPublish ? "true" : "false")")
+            if !isSubscriberPrimary || joinResponse.fastPublish {
                 // lazy negotiation for protocol v3+
                 try await publisherShouldNegotiate()
             }
@@ -196,7 +208,7 @@ extension Room {
 extension Room {
     func execute(when condition: @escaping ConditionEvalFunc,
                  removeWhen removeCondition: @escaping ConditionEvalFunc,
-                 _ block: @escaping () -> Void)
+                 _ block: @Sendable @escaping () -> Void)
     {
         // already matches condition, execute immediately
         if _state.read({ condition($0, nil) }) {
@@ -346,8 +358,15 @@ extension Room {
 
         do {
             try await Task.retrying(totalAttempts: _state.connectOptions.reconnectAttempts,
-                                    retryDelay: _state.connectOptions.reconnectAttemptDelay)
-            { currentAttempt, totalAttempts in
+                                    retryDelay: { @Sendable attempt in
+                                        let delay = TimeInterval.computeReconnectDelay(forAttempt: attempt,
+                                                                                       baseDelay: self._state.connectOptions.reconnectAttemptDelay,
+                                                                                       maxDelay: self._state.connectOptions.reconnectMaxDelay,
+                                                                                       totalAttempts: self._state.connectOptions.reconnectAttempts,
+                                                                                       addJitter: true)
+                                        self.log("[Connect] Retry cycle waiting for \(String(format: "%.2f", delay)) seconds before attempt \(attempt + 1)")
+                                        return delay
+                                    }) { currentAttempt, totalAttempts in
 
                 // Not reconnecting state anymore
                 guard let currentMode = self._state.isReconnectingWithMode else {
@@ -358,7 +377,7 @@ extension Room {
                 // Full reconnect failed, give up
                 guard currentMode != .full else { return }
 
-                self.log("[Connect] Retry in \(self._state.connectOptions.reconnectAttemptDelay) seconds, \(currentAttempt)/\(totalAttempts) tries left.")
+                self.log("[Connect] Starting retry attempt \(currentAttempt)/\(totalAttempts) with mode: \(currentMode)")
 
                 // Try full reconnect for the final attempt
                 if totalAttempts == currentAttempt, self._state.nextReconnectMode == nil {
@@ -375,8 +394,10 @@ extension Room {
                 do {
                     if case .quick = mode {
                         try await quickReconnectSequence()
+                        self.log("[Connect] Quick reconnect succeeded for attempt \(currentAttempt)")
                     } else if case .full = mode {
                         try await fullReconnectSequence()
+                        self.log("[Connect] Full reconnect succeeded for attempt \(currentAttempt)")
                     }
                 } catch {
                     self.log("[Connect] Reconnect mode: \(mode) failed with error: \(error)", .error)

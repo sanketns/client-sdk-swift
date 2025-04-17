@@ -153,6 +153,45 @@ enum Livekit_ImageCodec: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+/// Policy for publisher to handle subscribers that are unable to support the primary codec of a track
+enum Livekit_BackupCodecPolicy: SwiftProtobuf.Enum, Swift.CaseIterable {
+  typealias RawValue = Int
+
+  /// default behavior, regress to backup codec and all subscribers will receive the backup codec
+  case regression // = 0
+
+  /// encoding/send the primary and backup codec simultaneously
+  case simulcast // = 1
+  case UNRECOGNIZED(Int)
+
+  init() {
+    self = .regression
+  }
+
+  init?(rawValue: Int) {
+    switch rawValue {
+    case 0: self = .regression
+    case 1: self = .simulcast
+    default: self = .UNRECOGNIZED(rawValue)
+    }
+  }
+
+  var rawValue: Int {
+    switch self {
+    case .regression: return 0
+    case .simulcast: return 1
+    case .UNRECOGNIZED(let i): return i
+    }
+  }
+
+  // The compiler won't synthesize support with the UNRECOGNIZED case.
+  static let allCases: [Livekit_BackupCodecPolicy] = [
+    .regression,
+    .simulcast,
+  ]
+
+}
+
 enum Livekit_TrackType: SwiftProtobuf.Enum, Swift.CaseIterable {
   typealias RawValue = Int
   case audio // = 0
@@ -392,6 +431,15 @@ enum Livekit_DisconnectReason: SwiftProtobuf.Enum, Swift.CaseIterable {
 
   /// the room was closed, due to all Standard and Ingress participants having left
   case roomClosed // = 10
+
+  /// SIP callee did not respond in time
+  case userUnavailable // = 11
+
+  /// SIP callee rejected the call (busy)
+  case userRejected // = 12
+
+  /// SIP protocol failure or unexpected response
+  case sipTrunkFailure // = 13
   case UNRECOGNIZED(Int)
 
   init() {
@@ -411,6 +459,9 @@ enum Livekit_DisconnectReason: SwiftProtobuf.Enum, Swift.CaseIterable {
     case 8: self = .migration
     case 9: self = .signalClose
     case 10: self = .roomClosed
+    case 11: self = .userUnavailable
+    case 12: self = .userRejected
+    case 13: self = .sipTrunkFailure
     default: self = .UNRECOGNIZED(rawValue)
     }
   }
@@ -428,6 +479,9 @@ enum Livekit_DisconnectReason: SwiftProtobuf.Enum, Swift.CaseIterable {
     case .migration: return 8
     case .signalClose: return 9
     case .roomClosed: return 10
+    case .userUnavailable: return 11
+    case .userRejected: return 12
+    case .sipTrunkFailure: return 13
     case .UNRECOGNIZED(let i): return i
     }
   }
@@ -445,6 +499,9 @@ enum Livekit_DisconnectReason: SwiftProtobuf.Enum, Swift.CaseIterable {
     .migration,
     .signalClose,
     .roomClosed,
+    .userUnavailable,
+    .userRejected,
+    .sipTrunkFailure,
   ]
 
 }
@@ -583,6 +640,21 @@ enum Livekit_AudioTrackFeature: SwiftProtobuf.Enum, Swift.CaseIterable {
 
 }
 
+struct Livekit_Pagination: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  /// list entities which IDs are greater
+  var afterID: String = String()
+
+  var limit: Int32 = 0
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  init() {}
+}
+
 struct Livekit_Room: Sendable {
   // SwiftProtobuf.Message conformance is added in an extension below. See the
   // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
@@ -599,6 +671,8 @@ struct Livekit_Room: Sendable {
   var maxParticipants: UInt32 = 0
 
   var creationTime: Int64 = 0
+
+  var creationTimeMs: Int64 = 0
 
   var turnPassword: String = String()
 
@@ -735,6 +809,12 @@ struct Livekit_ParticipantInfo: @unchecked Sendable {
   var joinedAt: Int64 {
     get {return _storage._joinedAt}
     set {_uniqueStorage()._joinedAt = newValue}
+  }
+
+  /// timestamp when participant joined room, in milliseconds
+  var joinedAtMs: Int64 {
+    get {return _storage._joinedAtMs}
+    set {_uniqueStorage()._joinedAtMs = newValue}
   }
 
   var name: String {
@@ -1074,6 +1154,11 @@ struct Livekit_TrackInfo: @unchecked Sendable {
     set {_uniqueStorage()._audioFeatures = newValue}
   }
 
+  var backupCodecPolicy: Livekit_BackupCodecPolicy {
+    get {return _storage._backupCodecPolicy}
+    set {_uniqueStorage()._backupCodecPolicy = newValue}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   init() {}
@@ -1194,6 +1279,30 @@ struct Livekit_DataPacket: Sendable {
     set {value = .rpcResponse(newValue)}
   }
 
+  var streamHeader: Livekit_DataStream.Header {
+    get {
+      if case .streamHeader(let v)? = value {return v}
+      return Livekit_DataStream.Header()
+    }
+    set {value = .streamHeader(newValue)}
+  }
+
+  var streamChunk: Livekit_DataStream.Chunk {
+    get {
+      if case .streamChunk(let v)? = value {return v}
+      return Livekit_DataStream.Chunk()
+    }
+    set {value = .streamChunk(newValue)}
+  }
+
+  var streamTrailer: Livekit_DataStream.Trailer {
+    get {
+      if case .streamTrailer(let v)? = value {return v}
+      return Livekit_DataStream.Trailer()
+    }
+    set {value = .streamTrailer(newValue)}
+  }
+
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
   enum OneOf_Value: Equatable, Sendable {
@@ -1207,6 +1316,9 @@ struct Livekit_DataPacket: Sendable {
     case rpcRequest(Livekit_RpcRequest)
     case rpcAck(Livekit_RpcAck)
     case rpcResponse(Livekit_RpcResponse)
+    case streamHeader(Livekit_DataStream.Header)
+    case streamChunk(Livekit_DataStream.Chunk)
+    case streamTrailer(Livekit_DataStream.Trailer)
 
   }
 
@@ -1341,6 +1453,9 @@ struct Livekit_UserPacket: @unchecked Sendable {
   var hasEndTime: Bool {return self._endTime != nil}
   /// Clears the value of `endTime`. Subsequent reads from it will return its default value.
   mutating func clearEndTime() {self._endTime = nil}
+
+  /// added by SDK to enable de-duping of messages, for INTERNAL USE ONLY
+  var nonce: Data = Data()
 
   var unknownFields = SwiftProtobuf.UnknownStorage()
 
@@ -2264,6 +2379,214 @@ struct Livekit_TimedVersion: Sendable {
   init() {}
 }
 
+struct Livekit_DataStream: Sendable {
+  // SwiftProtobuf.Message conformance is added in an extension below. See the
+  // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+  // methods supported on all messages.
+
+  var unknownFields = SwiftProtobuf.UnknownStorage()
+
+  /// enum for operation types (specific to TextHeader)
+  enum OperationType: SwiftProtobuf.Enum, Swift.CaseIterable {
+    typealias RawValue = Int
+    case create // = 0
+    case update // = 1
+    case delete // = 2
+    case reaction // = 3
+    case UNRECOGNIZED(Int)
+
+    init() {
+      self = .create
+    }
+
+    init?(rawValue: Int) {
+      switch rawValue {
+      case 0: self = .create
+      case 1: self = .update
+      case 2: self = .delete
+      case 3: self = .reaction
+      default: self = .UNRECOGNIZED(rawValue)
+      }
+    }
+
+    var rawValue: Int {
+      switch self {
+      case .create: return 0
+      case .update: return 1
+      case .delete: return 2
+      case .reaction: return 3
+      case .UNRECOGNIZED(let i): return i
+      }
+    }
+
+    // The compiler won't synthesize support with the UNRECOGNIZED case.
+    static let allCases: [Livekit_DataStream.OperationType] = [
+      .create,
+      .update,
+      .delete,
+      .reaction,
+    ]
+
+  }
+
+  /// header properties specific to text streams
+  struct TextHeader: Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    var operationType: Livekit_DataStream.OperationType = .create
+
+    /// Optional: Version for updates/edits
+    var version: Int32 = 0
+
+    /// Optional: Reply to specific message
+    var replyToStreamID: String = String()
+
+    /// file attachments for text streams
+    var attachedStreamIds: [String] = []
+
+    /// true if the text has been generated by an agent from a participant's audio transcription
+    var generated: Bool = false
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+  }
+
+  /// header properties specific to byte or file streams
+  struct ByteHeader: Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    var name: String = String()
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+  }
+
+  /// main DataStream.Header that contains a oneof for specific headers
+  struct Header: Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    /// unique identifier for this data stream
+    var streamID: String = String()
+
+    /// using int64 for Unix timestamp
+    var timestamp: Int64 = 0
+
+    var topic: String = String()
+
+    var mimeType: String = String()
+
+    /// only populated for finite streams, if it's a stream of unknown size this stays empty
+    var totalLength: UInt64 {
+      get {return _totalLength ?? 0}
+      set {_totalLength = newValue}
+    }
+    /// Returns true if `totalLength` has been explicitly set.
+    var hasTotalLength: Bool {return self._totalLength != nil}
+    /// Clears the value of `totalLength`. Subsequent reads from it will return its default value.
+    mutating func clearTotalLength() {self._totalLength = nil}
+
+    /// defaults to NONE
+    var encryptionType: Livekit_Encryption.TypeEnum = .none
+
+    /// user defined attributes map that can carry additional info
+    var attributes: Dictionary<String,String> = [:]
+
+    /// oneof to choose between specific header types
+    var contentHeader: Livekit_DataStream.Header.OneOf_ContentHeader? = nil
+
+    var textHeader: Livekit_DataStream.TextHeader {
+      get {
+        if case .textHeader(let v)? = contentHeader {return v}
+        return Livekit_DataStream.TextHeader()
+      }
+      set {contentHeader = .textHeader(newValue)}
+    }
+
+    var byteHeader: Livekit_DataStream.ByteHeader {
+      get {
+        if case .byteHeader(let v)? = contentHeader {return v}
+        return Livekit_DataStream.ByteHeader()
+      }
+      set {contentHeader = .byteHeader(newValue)}
+    }
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    /// oneof to choose between specific header types
+    enum OneOf_ContentHeader: Equatable, Sendable {
+      case textHeader(Livekit_DataStream.TextHeader)
+      case byteHeader(Livekit_DataStream.ByteHeader)
+
+    }
+
+    init() {}
+
+    fileprivate var _totalLength: UInt64? = nil
+  }
+
+  struct Chunk: @unchecked Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    /// unique identifier for this data stream to map it to the correct header
+    var streamID: String = String()
+
+    var chunkIndex: UInt64 = 0
+
+    /// content as binary (bytes)
+    var content: Data = Data()
+
+    /// a version indicating that this chunk_index has been retroactively modified and the original one needs to be replaced
+    var version: Int32 = 0
+
+    /// optional, initialization vector for AES-GCM encryption
+    var iv: Data {
+      get {return _iv ?? Data()}
+      set {_iv = newValue}
+    }
+    /// Returns true if `iv` has been explicitly set.
+    var hasIv: Bool {return self._iv != nil}
+    /// Clears the value of `iv`. Subsequent reads from it will return its default value.
+    mutating func clearIv() {self._iv = nil}
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+
+    fileprivate var _iv: Data? = nil
+  }
+
+  struct Trailer: Sendable {
+    // SwiftProtobuf.Message conformance is added in an extension below. See the
+    // `Message` and `Message+*Additions` files in the SwiftProtobuf library for
+    // methods supported on all messages.
+
+    /// unique identifier for this data stream
+    var streamID: String = String()
+
+    /// reason why the stream was closed (could contain "error" / "interrupted" / empty for expected end)
+    var reason: String = String()
+
+    /// finalizing updates for the stream, can also include additional insights for errors or endTime for transcription
+    var attributes: Dictionary<String,String> = [:]
+
+    var unknownFields = SwiftProtobuf.UnknownStorage()
+
+    init() {}
+  }
+
+  init() {}
+}
+
 // MARK: - Code below here is support for the SwiftProtobuf runtime.
 
 fileprivate let _protobuf_package = "livekit"
@@ -2290,6 +2613,13 @@ extension Livekit_ImageCodec: SwiftProtobuf._ProtoNameProviding {
   static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
     0: .same(proto: "IC_DEFAULT"),
     1: .same(proto: "IC_JPEG"),
+  ]
+}
+
+extension Livekit_BackupCodecPolicy: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    0: .same(proto: "REGRESSION"),
+    1: .same(proto: "SIMULCAST"),
   ]
 }
 
@@ -2350,6 +2680,9 @@ extension Livekit_DisconnectReason: SwiftProtobuf._ProtoNameProviding {
     8: .same(proto: "MIGRATION"),
     9: .same(proto: "SIGNAL_CLOSE"),
     10: .same(proto: "ROOM_CLOSED"),
+    11: .same(proto: "USER_UNAVAILABLE"),
+    12: .same(proto: "USER_REJECTED"),
+    13: .same(proto: "SIP_TRUNK_FAILURE"),
   ]
 }
 
@@ -2382,6 +2715,44 @@ extension Livekit_AudioTrackFeature: SwiftProtobuf._ProtoNameProviding {
   ]
 }
 
+extension Livekit_Pagination: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".Pagination"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "after_id"),
+    2: .same(proto: "limit"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.afterID) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.limit) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.afterID.isEmpty {
+      try visitor.visitSingularStringField(value: self.afterID, fieldNumber: 1)
+    }
+    if self.limit != 0 {
+      try visitor.visitSingularInt32Field(value: self.limit, fieldNumber: 2)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_Pagination, rhs: Livekit_Pagination) -> Bool {
+    if lhs.afterID != rhs.afterID {return false}
+    if lhs.limit != rhs.limit {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
 extension Livekit_Room: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
   static let protoMessageName: String = _protobuf_package + ".Room"
   static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
@@ -2391,6 +2762,7 @@ extension Livekit_Room: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
     14: .standard(proto: "departure_timeout"),
     4: .standard(proto: "max_participants"),
     5: .standard(proto: "creation_time"),
+    15: .standard(proto: "creation_time_ms"),
     6: .standard(proto: "turn_password"),
     7: .standard(proto: "enabled_codecs"),
     8: .same(proto: "metadata"),
@@ -2419,6 +2791,7 @@ extension Livekit_Room: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
       case 11: try { try decoder.decodeSingularUInt32Field(value: &self.numPublishers) }()
       case 13: try { try decoder.decodeSingularMessageField(value: &self._version) }()
       case 14: try { try decoder.decodeSingularUInt32Field(value: &self.departureTimeout) }()
+      case 15: try { try decoder.decodeSingularInt64Field(value: &self.creationTimeMs) }()
       default: break
       }
     }
@@ -2468,6 +2841,9 @@ extension Livekit_Room: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
     if self.departureTimeout != 0 {
       try visitor.visitSingularUInt32Field(value: self.departureTimeout, fieldNumber: 14)
     }
+    if self.creationTimeMs != 0 {
+      try visitor.visitSingularInt64Field(value: self.creationTimeMs, fieldNumber: 15)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -2478,6 +2854,7 @@ extension Livekit_Room: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementat
     if lhs.departureTimeout != rhs.departureTimeout {return false}
     if lhs.maxParticipants != rhs.maxParticipants {return false}
     if lhs.creationTime != rhs.creationTime {return false}
+    if lhs.creationTimeMs != rhs.creationTimeMs {return false}
     if lhs.turnPassword != rhs.turnPassword {return false}
     if lhs.enabledCodecs != rhs.enabledCodecs {return false}
     if lhs.metadata != rhs.metadata {return false}
@@ -2661,6 +3038,7 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
     4: .same(proto: "tracks"),
     5: .same(proto: "metadata"),
     6: .standard(proto: "joined_at"),
+    17: .standard(proto: "joined_at_ms"),
     9: .same(proto: "name"),
     10: .same(proto: "version"),
     11: .same(proto: "permission"),
@@ -2678,6 +3056,7 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
     var _tracks: [Livekit_TrackInfo] = []
     var _metadata: String = String()
     var _joinedAt: Int64 = 0
+    var _joinedAtMs: Int64 = 0
     var _name: String = String()
     var _version: UInt32 = 0
     var _permission: Livekit_ParticipantPermission? = nil
@@ -2706,6 +3085,7 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
       _tracks = source._tracks
       _metadata = source._metadata
       _joinedAt = source._joinedAt
+      _joinedAtMs = source._joinedAtMs
       _name = source._name
       _version = source._version
       _permission = source._permission
@@ -2746,6 +3126,7 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
         case 14: try { try decoder.decodeSingularEnumField(value: &_storage._kind) }()
         case 15: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &_storage._attributes) }()
         case 16: try { try decoder.decodeSingularEnumField(value: &_storage._disconnectReason) }()
+        case 17: try { try decoder.decodeSingularInt64Field(value: &_storage._joinedAtMs) }()
         default: break
         }
       }
@@ -2800,6 +3181,9 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
       if _storage._disconnectReason != .unknownReason {
         try visitor.visitSingularEnumField(value: _storage._disconnectReason, fieldNumber: 16)
       }
+      if _storage._joinedAtMs != 0 {
+        try visitor.visitSingularInt64Field(value: _storage._joinedAtMs, fieldNumber: 17)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -2815,6 +3199,7 @@ extension Livekit_ParticipantInfo: SwiftProtobuf.Message, SwiftProtobuf._Message
         if _storage._tracks != rhs_storage._tracks {return false}
         if _storage._metadata != rhs_storage._metadata {return false}
         if _storage._joinedAt != rhs_storage._joinedAt {return false}
+        if _storage._joinedAtMs != rhs_storage._joinedAtMs {return false}
         if _storage._name != rhs_storage._name {return false}
         if _storage._version != rhs_storage._version {return false}
         if _storage._permission != rhs_storage._permission {return false}
@@ -2950,6 +3335,7 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     17: .same(proto: "stream"),
     18: .same(proto: "version"),
     19: .standard(proto: "audio_features"),
+    20: .standard(proto: "backup_codec_policy"),
   ]
 
   fileprivate class _StorageClass {
@@ -2972,6 +3358,7 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
     var _stream: String = String()
     var _version: Livekit_TimedVersion? = nil
     var _audioFeatures: [Livekit_AudioTrackFeature] = []
+    var _backupCodecPolicy: Livekit_BackupCodecPolicy = .regression
 
     #if swift(>=5.10)
       // This property is used as the initial default value for new instances of the type.
@@ -3005,6 +3392,7 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
       _stream = source._stream
       _version = source._version
       _audioFeatures = source._audioFeatures
+      _backupCodecPolicy = source._backupCodecPolicy
     }
   }
 
@@ -3042,6 +3430,7 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
         case 17: try { try decoder.decodeSingularStringField(value: &_storage._stream) }()
         case 18: try { try decoder.decodeSingularMessageField(value: &_storage._version) }()
         case 19: try { try decoder.decodeRepeatedEnumField(value: &_storage._audioFeatures) }()
+        case 20: try { try decoder.decodeSingularEnumField(value: &_storage._backupCodecPolicy) }()
         default: break
         }
       }
@@ -3111,6 +3500,9 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
       if !_storage._audioFeatures.isEmpty {
         try visitor.visitPackedEnumField(value: _storage._audioFeatures, fieldNumber: 19)
       }
+      if _storage._backupCodecPolicy != .regression {
+        try visitor.visitSingularEnumField(value: _storage._backupCodecPolicy, fieldNumber: 20)
+      }
     }
     try unknownFields.traverse(visitor: &visitor)
   }
@@ -3139,6 +3531,7 @@ extension Livekit_TrackInfo: SwiftProtobuf.Message, SwiftProtobuf._MessageImplem
         if _storage._stream != rhs_storage._stream {return false}
         if _storage._version != rhs_storage._version {return false}
         if _storage._audioFeatures != rhs_storage._audioFeatures {return false}
+        if _storage._backupCodecPolicy != rhs_storage._backupCodecPolicy {return false}
         return true
       }
       if !storagesAreEqual {return false}
@@ -3219,6 +3612,9 @@ extension Livekit_DataPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
     10: .standard(proto: "rpc_request"),
     11: .standard(proto: "rpc_ack"),
     12: .standard(proto: "rpc_response"),
+    13: .standard(proto: "stream_header"),
+    14: .standard(proto: "stream_chunk"),
+    15: .standard(proto: "stream_trailer"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -3347,6 +3743,45 @@ extension Livekit_DataPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
           self.value = .rpcResponse(v)
         }
       }()
+      case 13: try {
+        var v: Livekit_DataStream.Header?
+        var hadOneofValue = false
+        if let current = self.value {
+          hadOneofValue = true
+          if case .streamHeader(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.value = .streamHeader(v)
+        }
+      }()
+      case 14: try {
+        var v: Livekit_DataStream.Chunk?
+        var hadOneofValue = false
+        if let current = self.value {
+          hadOneofValue = true
+          if case .streamChunk(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.value = .streamChunk(v)
+        }
+      }()
+      case 15: try {
+        var v: Livekit_DataStream.Trailer?
+        var hadOneofValue = false
+        if let current = self.value {
+          hadOneofValue = true
+          if case .streamTrailer(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.value = .streamTrailer(v)
+        }
+      }()
       default: break
       }
     }
@@ -3405,6 +3840,18 @@ extension Livekit_DataPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
     case .rpcResponse?: try {
       guard case .rpcResponse(let v)? = self.value else { preconditionFailure() }
       try visitor.visitSingularMessageField(value: v, fieldNumber: 12)
+    }()
+    case .streamHeader?: try {
+      guard case .streamHeader(let v)? = self.value else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 13)
+    }()
+    case .streamChunk?: try {
+      guard case .streamChunk(let v)? = self.value else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 14)
+    }()
+    case .streamTrailer?: try {
+      guard case .streamTrailer(let v)? = self.value else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 15)
     }()
     default: break
     }
@@ -3516,6 +3963,7 @@ extension Livekit_UserPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
     8: .same(proto: "id"),
     9: .standard(proto: "start_time"),
     10: .standard(proto: "end_time"),
+    11: .same(proto: "nonce"),
   ]
 
   mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
@@ -3533,6 +3981,7 @@ extension Livekit_UserPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
       case 8: try { try decoder.decodeSingularStringField(value: &self._id) }()
       case 9: try { try decoder.decodeSingularUInt64Field(value: &self._startTime) }()
       case 10: try { try decoder.decodeSingularUInt64Field(value: &self._endTime) }()
+      case 11: try { try decoder.decodeSingularBytesField(value: &self.nonce) }()
       default: break
       }
     }
@@ -3570,6 +4019,9 @@ extension Livekit_UserPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
     try { if let v = self._endTime {
       try visitor.visitSingularUInt64Field(value: v, fieldNumber: 10)
     } }()
+    if !self.nonce.isEmpty {
+      try visitor.visitSingularBytesField(value: self.nonce, fieldNumber: 11)
+    }
     try unknownFields.traverse(visitor: &visitor)
   }
 
@@ -3583,6 +4035,7 @@ extension Livekit_UserPacket: SwiftProtobuf.Message, SwiftProtobuf._MessageImple
     if lhs._id != rhs._id {return false}
     if lhs._startTime != rhs._startTime {return false}
     if lhs._endTime != rhs._endTime {return false}
+    if lhs.nonce != rhs.nonce {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }
@@ -5241,6 +5694,338 @@ extension Livekit_TimedVersion: SwiftProtobuf.Message, SwiftProtobuf._MessageImp
   static func ==(lhs: Livekit_TimedVersion, rhs: Livekit_TimedVersion) -> Bool {
     if lhs.unixMicro != rhs.unixMicro {return false}
     if lhs.ticks != rhs.ticks {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = _protobuf_package + ".DataStream"
+  static let _protobuf_nameMap = SwiftProtobuf._NameMap()
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    // Load everything into unknown fields
+    while try decoder.nextFieldNumber() != nil {}
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream, rhs: Livekit_DataStream) -> Bool {
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream.OperationType: SwiftProtobuf._ProtoNameProviding {
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    0: .same(proto: "CREATE"),
+    1: .same(proto: "UPDATE"),
+    2: .same(proto: "DELETE"),
+    3: .same(proto: "REACTION"),
+  ]
+}
+
+extension Livekit_DataStream.TextHeader: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = Livekit_DataStream.protoMessageName + ".TextHeader"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "operation_type"),
+    2: .same(proto: "version"),
+    3: .standard(proto: "reply_to_stream_id"),
+    4: .standard(proto: "attached_stream_ids"),
+    5: .same(proto: "generated"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularEnumField(value: &self.operationType) }()
+      case 2: try { try decoder.decodeSingularInt32Field(value: &self.version) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.replyToStreamID) }()
+      case 4: try { try decoder.decodeRepeatedStringField(value: &self.attachedStreamIds) }()
+      case 5: try { try decoder.decodeSingularBoolField(value: &self.generated) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if self.operationType != .create {
+      try visitor.visitSingularEnumField(value: self.operationType, fieldNumber: 1)
+    }
+    if self.version != 0 {
+      try visitor.visitSingularInt32Field(value: self.version, fieldNumber: 2)
+    }
+    if !self.replyToStreamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.replyToStreamID, fieldNumber: 3)
+    }
+    if !self.attachedStreamIds.isEmpty {
+      try visitor.visitRepeatedStringField(value: self.attachedStreamIds, fieldNumber: 4)
+    }
+    if self.generated != false {
+      try visitor.visitSingularBoolField(value: self.generated, fieldNumber: 5)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream.TextHeader, rhs: Livekit_DataStream.TextHeader) -> Bool {
+    if lhs.operationType != rhs.operationType {return false}
+    if lhs.version != rhs.version {return false}
+    if lhs.replyToStreamID != rhs.replyToStreamID {return false}
+    if lhs.attachedStreamIds != rhs.attachedStreamIds {return false}
+    if lhs.generated != rhs.generated {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream.ByteHeader: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = Livekit_DataStream.protoMessageName + ".ByteHeader"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .same(proto: "name"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.name) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.name.isEmpty {
+      try visitor.visitSingularStringField(value: self.name, fieldNumber: 1)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream.ByteHeader, rhs: Livekit_DataStream.ByteHeader) -> Bool {
+    if lhs.name != rhs.name {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream.Header: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = Livekit_DataStream.protoMessageName + ".Header"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "stream_id"),
+    2: .same(proto: "timestamp"),
+    3: .same(proto: "topic"),
+    4: .standard(proto: "mime_type"),
+    5: .standard(proto: "total_length"),
+    7: .standard(proto: "encryption_type"),
+    8: .same(proto: "attributes"),
+    9: .standard(proto: "text_header"),
+    10: .standard(proto: "byte_header"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularInt64Field(value: &self.timestamp) }()
+      case 3: try { try decoder.decodeSingularStringField(value: &self.topic) }()
+      case 4: try { try decoder.decodeSingularStringField(value: &self.mimeType) }()
+      case 5: try { try decoder.decodeSingularUInt64Field(value: &self._totalLength) }()
+      case 7: try { try decoder.decodeSingularEnumField(value: &self.encryptionType) }()
+      case 8: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &self.attributes) }()
+      case 9: try {
+        var v: Livekit_DataStream.TextHeader?
+        var hadOneofValue = false
+        if let current = self.contentHeader {
+          hadOneofValue = true
+          if case .textHeader(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.contentHeader = .textHeader(v)
+        }
+      }()
+      case 10: try {
+        var v: Livekit_DataStream.ByteHeader?
+        var hadOneofValue = false
+        if let current = self.contentHeader {
+          hadOneofValue = true
+          if case .byteHeader(let m) = current {v = m}
+        }
+        try decoder.decodeSingularMessageField(value: &v)
+        if let v = v {
+          if hadOneofValue {try decoder.handleConflictingOneOf()}
+          self.contentHeader = .byteHeader(v)
+        }
+      }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    if self.timestamp != 0 {
+      try visitor.visitSingularInt64Field(value: self.timestamp, fieldNumber: 2)
+    }
+    if !self.topic.isEmpty {
+      try visitor.visitSingularStringField(value: self.topic, fieldNumber: 3)
+    }
+    if !self.mimeType.isEmpty {
+      try visitor.visitSingularStringField(value: self.mimeType, fieldNumber: 4)
+    }
+    try { if let v = self._totalLength {
+      try visitor.visitSingularUInt64Field(value: v, fieldNumber: 5)
+    } }()
+    if self.encryptionType != .none {
+      try visitor.visitSingularEnumField(value: self.encryptionType, fieldNumber: 7)
+    }
+    if !self.attributes.isEmpty {
+      try visitor.visitMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: self.attributes, fieldNumber: 8)
+    }
+    switch self.contentHeader {
+    case .textHeader?: try {
+      guard case .textHeader(let v)? = self.contentHeader else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 9)
+    }()
+    case .byteHeader?: try {
+      guard case .byteHeader(let v)? = self.contentHeader else { preconditionFailure() }
+      try visitor.visitSingularMessageField(value: v, fieldNumber: 10)
+    }()
+    case nil: break
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream.Header, rhs: Livekit_DataStream.Header) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.timestamp != rhs.timestamp {return false}
+    if lhs.topic != rhs.topic {return false}
+    if lhs.mimeType != rhs.mimeType {return false}
+    if lhs._totalLength != rhs._totalLength {return false}
+    if lhs.encryptionType != rhs.encryptionType {return false}
+    if lhs.attributes != rhs.attributes {return false}
+    if lhs.contentHeader != rhs.contentHeader {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream.Chunk: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = Livekit_DataStream.protoMessageName + ".Chunk"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "stream_id"),
+    2: .standard(proto: "chunk_index"),
+    3: .same(proto: "content"),
+    4: .same(proto: "version"),
+    5: .same(proto: "iv"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularUInt64Field(value: &self.chunkIndex) }()
+      case 3: try { try decoder.decodeSingularBytesField(value: &self.content) }()
+      case 4: try { try decoder.decodeSingularInt32Field(value: &self.version) }()
+      case 5: try { try decoder.decodeSingularBytesField(value: &self._iv) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    // The use of inline closures is to circumvent an issue where the compiler
+    // allocates stack space for every if/case branch local when no optimizations
+    // are enabled. https://github.com/apple/swift-protobuf/issues/1034 and
+    // https://github.com/apple/swift-protobuf/issues/1182
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    if self.chunkIndex != 0 {
+      try visitor.visitSingularUInt64Field(value: self.chunkIndex, fieldNumber: 2)
+    }
+    if !self.content.isEmpty {
+      try visitor.visitSingularBytesField(value: self.content, fieldNumber: 3)
+    }
+    if self.version != 0 {
+      try visitor.visitSingularInt32Field(value: self.version, fieldNumber: 4)
+    }
+    try { if let v = self._iv {
+      try visitor.visitSingularBytesField(value: v, fieldNumber: 5)
+    } }()
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream.Chunk, rhs: Livekit_DataStream.Chunk) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.chunkIndex != rhs.chunkIndex {return false}
+    if lhs.content != rhs.content {return false}
+    if lhs.version != rhs.version {return false}
+    if lhs._iv != rhs._iv {return false}
+    if lhs.unknownFields != rhs.unknownFields {return false}
+    return true
+  }
+}
+
+extension Livekit_DataStream.Trailer: SwiftProtobuf.Message, SwiftProtobuf._MessageImplementationBase, SwiftProtobuf._ProtoNameProviding {
+  static let protoMessageName: String = Livekit_DataStream.protoMessageName + ".Trailer"
+  static let _protobuf_nameMap: SwiftProtobuf._NameMap = [
+    1: .standard(proto: "stream_id"),
+    2: .same(proto: "reason"),
+    3: .same(proto: "attributes"),
+  ]
+
+  mutating func decodeMessage<D: SwiftProtobuf.Decoder>(decoder: inout D) throws {
+    while let fieldNumber = try decoder.nextFieldNumber() {
+      // The use of inline closures is to circumvent an issue where the compiler
+      // allocates stack space for every case branch when no optimizations are
+      // enabled. https://github.com/apple/swift-protobuf/issues/1034
+      switch fieldNumber {
+      case 1: try { try decoder.decodeSingularStringField(value: &self.streamID) }()
+      case 2: try { try decoder.decodeSingularStringField(value: &self.reason) }()
+      case 3: try { try decoder.decodeMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: &self.attributes) }()
+      default: break
+      }
+    }
+  }
+
+  func traverse<V: SwiftProtobuf.Visitor>(visitor: inout V) throws {
+    if !self.streamID.isEmpty {
+      try visitor.visitSingularStringField(value: self.streamID, fieldNumber: 1)
+    }
+    if !self.reason.isEmpty {
+      try visitor.visitSingularStringField(value: self.reason, fieldNumber: 2)
+    }
+    if !self.attributes.isEmpty {
+      try visitor.visitMapField(fieldType: SwiftProtobuf._ProtobufMap<SwiftProtobuf.ProtobufString,SwiftProtobuf.ProtobufString>.self, value: self.attributes, fieldNumber: 3)
+    }
+    try unknownFields.traverse(visitor: &visitor)
+  }
+
+  static func ==(lhs: Livekit_DataStream.Trailer, rhs: Livekit_DataStream.Trailer) -> Bool {
+    if lhs.streamID != rhs.streamID {return false}
+    if lhs.reason != rhs.reason {return false}
+    if lhs.attributes != rhs.attributes {return false}
     if lhs.unknownFields != rhs.unknownFields {return false}
     return true
   }

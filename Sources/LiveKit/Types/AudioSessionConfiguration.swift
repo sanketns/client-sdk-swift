@@ -1,5 +1,5 @@
 /*
- * Copyright 2024 LiveKit
+ * Copyright 2025 LiveKit
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -37,11 +37,11 @@ public extension AudioSessionConfiguration {
                                                     mode: .spokenAudio)
 
     static let playAndRecordSpeaker = AudioSessionConfiguration(category: .playAndRecord,
-                                                                categoryOptions: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay],
+                                                                categoryOptions: [.mixWithOthers, .allowBluetooth, .allowBluetoothA2DP, .allowAirPlay],
                                                                 mode: .videoChat)
 
     static let playAndRecordReceiver = AudioSessionConfiguration(category: .playAndRecord,
-                                                                 categoryOptions: [.allowBluetooth, .allowBluetoothA2DP, .allowAirPlay],
+                                                                 categoryOptions: [.mixWithOthers, .allowBluetooth, .allowBluetoothA2DP, .allowAirPlay],
                                                                  mode: .voiceChat)
 }
 
