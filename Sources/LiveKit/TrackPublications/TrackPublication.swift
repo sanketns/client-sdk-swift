@@ -194,7 +194,7 @@ extension TrackPublication: TrackDelegateInternal {
     func track(_ track: Track, didMutateState newState: Track.State, oldState: Track.State) {
         // Notify on UI updating changes
         if newState.isMuted != oldState.isMuted {
-            // log("Track didMutateState newState: \(newState), oldState: \(oldState), kind: \(track.kind)")
+            //log("Track didMutateState newState: \(newState), oldState: \(oldState), kind: \(track.kind)")
             notifyObjectWillChange()
         }
     }
