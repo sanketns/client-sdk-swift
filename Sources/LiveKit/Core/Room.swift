@@ -242,7 +242,6 @@ public class Room: NSObject, @unchecked Sendable, ObservableObject, Loggable {
 
         // trigger events when state mutates
         _state.onDidMutate = { [weak self] newState, oldState in
-
             guard let self else { return }
 
             // sid updated
@@ -350,8 +349,35 @@ public class Room: NSObject, @unchecked Sendable, ObservableObject, Loggable {
 
         _state.mutate { $0.connectionState = .connecting }
 
+        // Concurrent mic publish mode
+        let enableMicrophone = _state.connectOptions.enableMicrophone
+        log("Concurrent enable microphone mode: \(enableMicrophone)")
+
+        let createMicrophoneTrackTask: Task<LocalTrack, any Error>? = {
+            if let recorder = preConnectBuffer.recorder, recorder.isRecording {
+                return Task {
+                    recorder.track
+                }
+            } else if enableMicrophone {
+                return Task {
+                    let localTrack = LocalAudioTrack.createTrack(options: _state.roomOptions.defaultAudioCaptureOptions,
+                                                                 reportStatistics: _state.roomOptions.reportRemoteTrackStatistics)
+                    // Initializes AudioDeviceModule's recording
+                    try await localTrack.start()
+                    return localTrack
+                }
+            } else {
+                return nil
+            }
+        }()
+
         do {
             try await fullConnectSequence(url, token)
+
+            if let createMicrophoneTrackTask, !createMicrophoneTrackTask.isCancelled {
+                let track = try await createMicrophoneTrackTask.value
+                try await localParticipant._publish(track: track, options: _state.roomOptions.defaultAudioPublishOptions.withPreconnect(preConnectBuffer.recorder?.isRecording ?? false))
+            }
 
             // Connect sequence successful
             log("Connect sequence completed")
@@ -367,6 +393,13 @@ public class Room: NSObject, @unchecked Sendable, ObservableObject, Loggable {
             }
 
         } catch {
+            // Stop the track if it was created but not published
+            if let createMicrophoneTrackTask, !createMicrophoneTrackTask.isCancelled,
+               case let .success(track) = await createMicrophoneTrackTask.result
+            {
+                try? await track.stop()
+            }
+
             await cleanUp(withError: error)
             // Re-throw error
             throw error
@@ -411,10 +444,6 @@ extension Room {
         // Cleanup for E2EE
         if let e2eeManager {
             e2eeManager.cleanUp()
-        }
-
-        if disconnectError != nil {
-            preConnectBuffer.stopRecording(flush: true)
         }
 
         // Reset state
